@@ -1,300 +1,29 @@
 import { auth, db } from './firebase-config.js';
+import { MAPS, MAP_NAMES, ATTACK_OPERATORS, DEFENSE_OPERATORS, ALL_OPERATORS, META, GADGETS } from './data.js';
+import { initMapPlanner } from './mapplanner.js';
 import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  updateProfile
+  createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  signOut, onAuthStateChanged, updateProfile
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
-  collection,
-  addDoc,
-  getDocs,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-  serverTimestamp,
-  updateDoc,
-  setDoc,
-  getDoc
+  collection, addDoc, getDocs, deleteDoc, doc, onSnapshot,
+  query, orderBy, serverTimestamp, updateDoc, setDoc, getDoc, where
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-// ===== META DATA =====
-const META = {
-  "Clubhouse": {
-    siegegg: "https://www.siegegg.com/maps/clubhouse",
-    sites: {
-      "Bar / Stage": {
-        atk: [
-          { name: "Ash", role: "Entry fragger", desc: "Opens soft walls around Bar with CREM launcher, dictates pace of the push from Gym side." },
-          { name: "Ace", role: "Hard breacher", desc: "SELMA charges on Bar reinforced wall and Stage double. Core of every execute." },
-          { name: "Thatcher", role: "Support", desc: "EMPs destroy Bandit charges and Kaid claws on Bar wall. Never run Ace without him." },
-          { name: "Buck", role: "Soft breacher", desc: "Skeleton Key opens vertical plays from Church roof down into Bar — essential on this site." },
-          { name: "Nomad", role: "Flank watch", desc: "Airjabs seal Bike/Church flank routes post-execute. Protects the plant." }
-        ],
-        def: [
-          { name: "Bandit", role: "Wall denial", desc: "Shock wires on Bar reinforced wall. Forces attackers to burn Thatcher utility before breaching." },
-          { name: "Mira", role: "Anchor", desc: "Black Mirror in Bar facing Gym entrance — controls the primary push corridor." },
-          { name: "Smoke", role: "Plant denial", desc: "Remote canisters cover Bar plant spots during final 30 seconds." },
-          { name: "Jäger", role: "Utility denial", desc: "ADS catches grenades in tight Bar corridor. Strong fragger for early roam." },
-          { name: "Lesion", role: "Intel", desc: "Gu needles in Stage corners slow attacker movement and reveal positions." }
-        ],
-        setup: "Reinforce Bar back wall and Stage left wall. Mira goes Bar facing Gym. Bandit shocks the two primary breach walls. Lesion seeds needles in Stage before roaming briefly. Smoke holds spawn kill angles from Bedroom balcony early, returns for plant denial. Jäger takes Bike Hall early, trades or returns.",
-        tip: "Bar/Stage is one of the most reinforcement-hungry sites in the pool. Prioritize the two reinforced breach walls before anything else."
-      },
-      "Gym / CCTV": {
-        atk: [
-          { name: "Thermite", role: "Hard breacher", desc: "Exothermic charge on CCTV wall — more reliable than Ace when wall denial is expected." },
-          { name: "Thatcher", role: "Support", desc: "EMPs through CCTV window and Gym exterior neutralize Bandit/Kaid before breach." },
-          { name: "Sledge", role: "Soft breacher", desc: "Opens Gym ceiling for vertical play down into CCTV. Reliable, no gadget dependency." },
-          { name: "Nomad", role: "Flank watch", desc: "Airjabs on Bike Hall and Church flank routes secure post-plant." },
-          { name: "Ash", role: "Entry fragger", desc: "Clears utility from Gym windows before the push. Fast enough to contest early rotations." }
-        ],
-        def: [
-          { name: "Kaid", role: "Wall denial", desc: "Rtila claws on CCTV reinforced wall — works where Bandit can't place shock wires." },
-          { name: "Valkyrie", role: "Intel", desc: "Black Eye cameras in Gym exterior and Bike Hall give full picture of attacker positions." },
-          { name: "Smoke", role: "Plant denial", desc: "Holds plant spot in CCTV room. Gas canisters reach both default plant and sneaky plant." },
-          { name: "Echo", role: "Plant denial", desc: "Yokai drone disrupts Gym pushes and reveals positions mid-execute." },
-          { name: "Jäger", role: "Roamer", desc: "Aggressive early roam in Armoury and Church to bleed attacker time." }
-        ],
-        setup: "Reinforce CCTV main wall and Gym side wall. Kaid claws the CCTV wall. Valkyrie places cameras in Gym exterior. Echo parks Yokai above CCTV plant. Smoke holds piano room or upper CCTV. One roamer (Jäger) works Church/Armoury early.",
-        tip: "Gym/CCTV is defender-sided when anchors hold position. Avoid over-roaming — stay to contest the Gym push early."
-      }
-    }
-  },
-  "Consulate": {
-    siegegg: "https://www.siegegg.com/maps/consulate",
-    sites: {
-      "Consul / Lobby": {
-        atk: [
-          { name: "Buck", role: "Soft breacher", desc: "Essential on Consulate. Opens Consul floor from above and soft walls for alternate entries." },
-          { name: "Maverick", role: "Anti-wall denial", desc: "Blowtorch burns through reinforced walls without triggering Bandit/Kaid — nearly essential here." },
-          { name: "Ash", role: "Entry fragger", desc: "Clears Lobby utility from distance. Fast enough for the aggressive Lobby angle." },
-          { name: "Nomad", role: "Flank watch", desc: "Airjabs seal Tellers and Basement flank routes after the push commits." },
-          { name: "Thatcher", role: "Support", desc: "EMPs on Lobby reinforced walls to enable Thermite or support Maverick." }
-        ],
-        def: [
-          { name: "Mira", role: "Anchor", desc: "Black Mirror in Consul facing Lobby — one of the best Mira spots in the game." },
-          { name: "Bandit", role: "Wall denial", desc: "Shocks Consul reinforced walls. Forces Maverick or Thatcher + Thermite chain." },
-          { name: "Smoke", role: "Plant denial", desc: "Covers both plant spots in Lobby from above with gas canisters." },
-          { name: "Lesion", role: "Intel", desc: "Gu needles in Tellers hallway slow and reveal flanking attackers." },
-          { name: "Vigil", role: "Roamer", desc: "Drone immunity makes early Consulate roam very strong — denies attacker intel phase." }
-        ],
-        setup: "Reinforce Consul main wall and Lobby window wall. Mira goes Consul facing Lobby. Bandit shocks both. Smoke holds above Lobby or in Consul. Lesion seeds Tellers. Vigil roams Basement/Garage hard early, retreats when drones are burned.",
-        tip: "Post-rework Consulate strongly favors a CQB anchor-heavy defense. Don't over-roam — the map punishes lone defenders getting caught in corridors."
-      },
-      "Visa / Archives": {
-        atk: [
-          { name: "Thermite", role: "Hard breacher", desc: "Opens Archives reinforced wall for the primary execute from Parking." },
-          { name: "Thatcher", role: "Support", desc: "EMPs through Archives window before Thermite charges." },
-          { name: "Buck", role: "Vertical", desc: "Opens Visa floor from Visa Offices above for a hard vertical angle." },
-          { name: "Iana", role: "Intel", desc: "Gemini clone scouts Archives layout safely before committing the team." },
-          { name: "Zofia", role: "Flex", desc: "Concussion grenades and impact grenades give flexibility on both entry and plant." }
-        ],
-        def: [
-          { name: "Kaid", role: "Wall denial", desc: "Claws on Archives reinforced wall when Bandit can't cover it." },
-          { name: "Azami", role: "Site reshaping", desc: "Kiba barriers reshape Archives doorways to create unexpected angles." },
-          { name: "Echo", role: "Plant denial", desc: "Yokai covers Visa plant spot. Strong in the confined Archives layout." },
-          { name: "Valkyrie", role: "Intel", desc: "Black Eye camera in Parking gives full attacker approach view." },
-          { name: "Smoke", role: "Plant denial", desc: "Remote canisters cover Visa default plant during final push." }
-        ],
-        setup: "Reinforce Archives main and Parking side wall. Kaid claws Archives. Azami reshapes two doorways into Archives. Valkyrie cam in Parking. Echo Yokai above Visa plant. Smoke holds Visa or roams Garage briefly.",
-        tip: "Visa/Archives rewards patient defense. Let attackers burn utility on Parking, then contest the Archives breach from Visa angles."
-      }
-    }
-  },
-  "Bank": {
-    siegegg: "https://www.siegegg.com/maps/bank",
-    sites: {
-      "Vault / Lockers": {
-        atk: [
-          { name: "Ace", role: "Hard breacher", desc: "SELMA on Vault main reinforced wall — the standard breach point for this site." },
-          { name: "Thatcher", role: "Support", desc: "EMPs neutralize Vault wall denial before Ace charges. Critical pairing." },
-          { name: "Hibana", role: "Alt breacher", desc: "X-KAIROS pellets on Vault wall — useful if Ace is banned or wall denial is heavy." },
-          { name: "Sledge", role: "Soft breacher", desc: "Opens Lockers ceiling from Office above for vertical pressure." },
-          { name: "Nomad", role: "Flank watch", desc: "Airjabs on Server Room flank route protect the plant." }
-        ],
-        def: [
-          { name: "Kaid", role: "Wall denial", desc: "Claws on Vault primary wall. Core wall denial anchor." },
-          { name: "Bandit", role: "Wall denial", desc: "Shocks Vault secondary walls. Pairs with Kaid for double denial." },
-          { name: "Mira", role: "Anchor", desc: "Black Mirror in Vault facing Lobby — one of the strongest Mira positions in competitive play." },
-          { name: "Smoke", role: "Plant denial", desc: "Covers Vault and Lockers plant spots. Standard anchor pairing with Mira." },
-          { name: "Jäger", role: "Roamer", desc: "ADS in Lockers absorbs grenades. Early roam through Archives then returns." }
-        ],
-        setup: "Reinforce Vault main and Lockers back wall. Kaid and Bandit stack wall denial. Mira Vault facing Lobby. Smoke holds Lockers or above Vault. Jäger takes Archives early, trades, returns to site.",
-        tip: "Vault/Lockers is a fortress site when wall denial is maintained. If both Ace and Thatcher are banned, Bank becomes extremely defender-sided."
-      },
-      "CEO / Tellers": {
-        atk: [
-          { name: "Thermite", role: "Hard breacher", desc: "CEO reinforced wall from Main Lobby side. Standard breach on this site." },
-          { name: "Thatcher", role: "Support", desc: "EMPs CEO wall gadgets before Thermite charges." },
-          { name: "Ash", role: "Entry fragger", desc: "Clears Teller window utility from outside before entry." },
-          { name: "Lion", role: "Intel", desc: "EE-ONE-D scan reveals defender positions during roam-clear phase." },
-          { name: "Nomad", role: "Flank watch", desc: "Airjabs secure CEO flank from Basement stairs post-plant." }
-        ],
-        def: [
-          { name: "Bandit", role: "Wall denial", desc: "Shock wires on CEO main reinforced wall." },
-          { name: "Azami", role: "Site reshaping", desc: "Kiba barriers in Tellers doorways create unexpected defender angles." },
-          { name: "Valkyrie", role: "Intel", desc: "Black Eyes in Lobby and Exterior provide attacker approach intel." },
-          { name: "Smoke", role: "Plant denial", desc: "Covers CEO plant spot from above." },
-          { name: "Echo", role: "Plant denial", desc: "Yokai disrupts plant attempts in CEO room." }
-        ],
-        setup: "Reinforce CEO main and side wall. Bandit shocks CEO wall. Azami reshapes Tellers doorways. Valkyrie drops cameras in Lobby. Echo parks Yokai above CEO plant. Smoke holds upper CEO or Tellers.",
-        tip: "CEO/Tellers is a flexible site with multiple entry points. Prioritize intel (Valkyrie + Echo) so anchors know where to hold before attackers commit."
-      }
-    }
-  },
-  "Chalet": {
-    siegegg: "https://www.siegegg.com/maps/chalet",
-    sites: {
-      "Garage / Snowmobile": {
-        atk: [
-          { name: "Ace", role: "Hard breacher", desc: "SELMA on Garage double reinforced wall — the primary execute point." },
-          { name: "Thatcher", role: "Support", desc: "EMPs Garage double wall before Ace charges. Essential pairing." },
-          { name: "Gridlock", role: "Area denial", desc: "Trax stingers block Garage run-outs and force defenders into site." },
-          { name: "Ash", role: "Entry fragger", desc: "Clears Garage window utility from Bear's Den or Snowmobile side." },
-          { name: "Nomad", role: "Flank watch", desc: "Airjabs on Kitchen and Trophy Room flank routes protect post-plant." }
-        ],
-        def: [
-          { name: "Bandit", role: "Wall denial", desc: "Shocks Garage double wall — the single most important piece of utility on this site." },
-          { name: "Kaid", role: "Wall denial", desc: "Backup claws on Garage wall when Bandit can't cover both panels." },
-          { name: "Smoke", role: "Plant denial", desc: "Remote canisters cover Snowmobile plant spot." },
-          { name: "Mira", role: "Anchor", desc: "Black Mirror in Garage facing Snowmobile — classic control anchor." },
-          { name: "Jäger", role: "Roamer", desc: "ADS in Garage absorbs grenades. Roams Ski Room early." }
-        ],
-        setup: "Reinforce Garage double wall (both panels). Bandit shocks both, Kaid as backup claw. Mira goes Garage facing Snowmobile. Smoke holds Kitchen or Bear's Den. Jäger roams Ski Room, returns.",
-        tip: "Garage double wall is the spine of this defense. If both breach panels fall without burning Thatcher + Ace, rotate immediately."
-      },
-      "Wine / Trophy": {
-        atk: [
-          { name: "Thermite", role: "Hard breacher", desc: "Opens Wine reinforced wall from Library side." },
-          { name: "Thatcher", role: "Support", desc: "EMPs Wine wall gadgets before Thermite." },
-          { name: "Buck", role: "Vertical", desc: "Opens Trophy ceiling from Master Bedroom above for hard vertical play." },
-          { name: "Zofia", role: "Flex", desc: "Concussion grenades force defenders off Wine angles during entry." },
-          { name: "Ash", role: "Entry fragger", desc: "Leads through Library window after wall opens." }
-        ],
-        def: [
-          { name: "Mira", role: "Anchor", desc: "Black Mirror in Wine facing Library — standard control anchor." },
-          { name: "Smoke", role: "Plant denial", desc: "Covers Trophy plant from above or Wine default." },
-          { name: "Bandit", role: "Wall denial", desc: "Shocks Wine reinforced wall to force Maverick or Thatcher + Thermite chain." },
-          { name: "Azami", role: "Site reshaping", desc: "Kiba barriers reshape Trophy doorways to deny attacker entry angles." },
-          { name: "Lesion", role: "Intel", desc: "Gu needles in Library hallway slow and reveal attackers." }
-        ],
-        setup: "Reinforce Wine main and Trophy back wall. Bandit shocks Wine. Mira goes Wine facing Library. Azami reshapes Trophy doorways. Smoke holds above Trophy or in Wine. Lesion seeds Library before briefly roaming.",
-        tip: "Wine/Trophy has the least natural cover of Chalet's sites. Mira and Azami together create the structure the site lacks by default."
-      }
-    }
-  },
-  "Oregon": {
-    siegegg: "https://www.siegegg.com/maps/oregon",
-    sites: {
-      "Kitchen / Dining": {
-        atk: [
-          { name: "Ace", role: "Hard breacher", desc: "SELMA on Kitchen reinforced wall from Laundry side." },
-          { name: "Thatcher", role: "Support", desc: "EMPs Kitchen wall denial before Ace charges." },
-          { name: "Ash", role: "Entry fragger", desc: "Leads entry through Dining window after breach — fastest tempo operator for this site." },
-          { name: "Nomad", role: "Flank watch", desc: "Airjabs on Dorms and Tower flank routes — Oregon has aggressive roamers." },
-          { name: "Buck", role: "Vertical", desc: "Opens Dining ceiling from Dorms 2F for vertical pressure on anchors." }
-        ],
-        def: [
-          { name: "Mira", role: "Anchor", desc: "Black Mirror in Kitchen facing Laundry — one of the highest-value Mira positions on Oregon." },
-          { name: "Smoke", role: "Plant denial", desc: "Remote canisters cover Kitchen plant from Dining or Laundry." },
-          { name: "Bandit", role: "Wall denial", desc: "Shocks Kitchen primary reinforced wall." },
-          { name: "Nomad", role: "Roam / path denial", desc: "Airjabs on Tower and Dorms routes punish attacker movement during drone phase." },
-          { name: "Lesion", role: "Intel", desc: "Gu needles in Laundry and Tower stairs reveal roam timings." }
-        ],
-        setup: "Reinforce Kitchen main wall and Dining back wall. Bandit shocks Kitchen. Mira goes Kitchen facing Laundry. Smoke holds Dining or Upper Kitchen. Nomad places Airjabs on Tower stairs and Dorm hallway. Lesion seeds Laundry before roaming Tower briefly.",
-        tip: "Oregon's flank routes are some of the most aggressive in the pool. Anti-flank utility (Nomad, Lesion) is as important as wall denial on this map."
-      },
-      "Basement / Supply": {
-        atk: [
-          { name: "Thermite", role: "Hard breacher", desc: "Supply reinforced wall from Garage side — tight breach point but reliable." },
-          { name: "Thatcher", role: "Support", desc: "EMPs Basement wall denial before Thermite." },
-          { name: "Sledge", role: "Vertical", desc: "Opens Basement ceiling from Kitchen above for the hardest vertical angle on this site." },
-          { name: "Iana", role: "Intel", desc: "Gemini clone scouts Basement layout safely — essential given how closed-off Basement is." },
-          { name: "Zofia", role: "Flex", desc: "Concussion grenades force defenders off tight Basement angles during entry." }
-        ],
-        def: [
-          { name: "Kaid", role: "Wall denial", desc: "Claws on Basement Supply reinforced wall — Bandit has difficulty wiring in tight Basement." },
-          { name: "Echo", role: "Plant denial", desc: "Yokai covers Supply plant spot and disrupts Basement pushes." },
-          { name: "Smoke", role: "Plant denial", desc: "Remote canisters reach Basement plant from Tower stairs." },
-          { name: "Azami", role: "Site reshaping", desc: "Kiba barriers in Basement doorways create cover where none exists naturally." },
-          { name: "Valkyrie", role: "Intel", desc: "Black Eyes in Garage and Laundry give full approach picture." }
-        ],
-        setup: "Reinforce Supply main wall and Basement back. Kaid claws Supply wall. Azami reshapes two doorways in Basement. Valkyrie drops cams in Garage. Echo Yokai above Supply plant. Smoke holds Tower stairs or Basement ceiling position.",
-        tip: "Basement is naturally enclosed but easy to vertical — always protect the ceiling above Supply. Sledge or Buck from Kitchen is the number one threat on this site."
-      }
-    }
-  },
-  "Coastline": {
-    siegegg: "https://www.siegegg.com/maps/coastline",
-    sites: {
-      "Hookah / Service": {
-        atk: [
-          { name: "Ace", role: "Hard breacher", desc: "SELMA on Hookah reinforced wall from Blue Bar side." },
-          { name: "Thatcher", role: "Support", desc: "EMPs Hookah wall denial before Ace charges." },
-          { name: "Osa", role: "Entry support", desc: "Talon-8 shields placed in Service entrance and Hookah window lock attacker angles." },
-          { name: "Ash", role: "Entry fragger", desc: "Clears Hookah window utility from Blue Bar balcony before push." },
-          { name: "Nomad", role: "Flank watch", desc: "Airjabs on Penthouse and Kitchen flank routes — Coastline roamers are aggressive." }
-        ],
-        def: [
-          { name: "Solis", role: "Intel denial", desc: "SPEC-IO scanner removes attacker drones — essential on Coastline where drone phase is key." },
-          { name: "Mira", role: "Anchor", desc: "Black Mirror in Hookah facing Service — standard Coastline anchor position." },
-          { name: "Smoke", role: "Plant denial", desc: "Remote canisters cover Service plant spot during final 30 seconds." },
-          { name: "Jäger", role: "Roamer", desc: "ADS absorbs grenades in Hookah. Roams Penthouse early." },
-          { name: "Oryx", role: "Roamer", desc: "Hatch mobility on Coastline is excellent — punches between floors freely." }
-        ],
-        setup: "Reinforce Hookah main wall and Service back wall. Mira goes Hookah facing Service. Solis stays site and scans during drone phase. Smoke holds Kitchen or above Hookah. Jäger roams Penthouse early, Oryx works Blue Bar exterior to Penthouse.",
-        tip: "Coastline rewards intel-heavy defense. Solis is especially strong here — attacker drones define how executes are built. Deny them early."
-      },
-      "VIP / Sunrise": {
-        atk: [
-          { name: "Thermite", role: "Hard breacher", desc: "VIP reinforced wall from Penthouse side." },
-          { name: "Thatcher", role: "Support", desc: "EMPs VIP wall denial before Thermite." },
-          { name: "Osa", role: "Entry support", desc: "Shields placed on VIP Balcony and Sunrise window create strong push angles." },
-          { name: "Ying", role: "Entry fragger", desc: "Candela charges clear VIP room and force defenders off angles during rush." },
-          { name: "Ash", role: "Entry fragger", desc: "Leads through Sunrise window after wall opens — fast tempo." }
-        ],
-        def: [
-          { name: "Bandit", role: "Wall denial", desc: "Shocks VIP primary reinforced wall — core of this defense." },
-          { name: "Azami", role: "Site reshaping", desc: "Kiba barriers reshape VIP doorways and Sunrise window for unconventional hold angles." },
-          { name: "Echo", role: "Plant denial", desc: "Yokai covers VIP plant spot and disrupts Ying rushes." },
-          { name: "Smoke", role: "Plant denial", desc: "Remote canisters cover Sunrise plant from Penthouse position." },
-          { name: "Valkyrie", role: "Intel", desc: "Black Eye cameras in Penthouse and Blue Bar exterior give full approach picture." }
-        ],
-        setup: "Reinforce VIP main and Sunrise back wall. Bandit shocks VIP. Azami reshapes VIP doorways. Valkyrie drops cams in Penthouse and exterior. Echo Yokai above VIP plant. Smoke holds above Sunrise or in Penthouse.",
-        tip: "VIP/Sunrise is one of the most attacker-sided sites in the pool. Wall denial (Bandit) and plant denial (Smoke + Echo) are non-negotiable."
-      }
-    }
-  }
-};
-
-const MAPS = Object.keys(META);
-const ALL_OPERATORS = [
-  "Ace","Ash","Azami","Bandit","Blackbeard","Blitz","Brava","Buck","Capitão",
-  "Caveira","Clash","Deimos","Doc","Dokkaebi","Echo","Ela","Fenrir","Finka",
-  "Flores","Frost","Fuze","Glaz","Gridlock","Grim","Hibana","Iana","IQ",
-  "Jackal","Jäger","Kaid","Kapkan","Lesion","Lion","Maestro","Maverick",
-  "Melusi","Mira","Montagne","Mozzie","Mute","Nøkk","Nomad","Oryx","Osa",
-  "Pulse","Ram","Rook","Sens","Sledge","Smoke","Solis","Solid Snake","Thorn",
-  "Thatcher","Thermite","Twitch","Valkyrie","Vigil","Wamai","Ying","Zero","Zofia"
-];
 
 // ===== STATE =====
 let currentUser = null;
 let allStrats = [];
-let allComps = [];
-let selectedOps = [];
-let compSelectedOps = [];
+let allMatches = [];
+let allRoster = [];
+let selectedStratOps = [];
 let stratSteps = [];
 let editStratId = null;
-let activeMap = MAPS[0];
-let activeSite = Object.keys(META[MAPS[0]].sites)[0];
-let activeMapPlanner = null;
+let activeStratId = null;
+let currentBans = { atk: [], def: [] };
+let opRoleEditStratId = null;
+let opRoleEditOp = null;
 let unsubStrats = null;
-let unsubComps = null;
+let unsubMatches = null;
 
 // ===== AUTH =====
 onAuthStateChanged(auth, async (user) => {
@@ -325,267 +54,457 @@ function showAuth() {
   document.getElementById('auth-screen').classList.add('active');
   document.getElementById('app-screen').classList.remove('active');
 }
+
 function showApp() {
   document.getElementById('auth-screen').classList.remove('active');
   document.getElementById('app-screen').classList.add('active');
   const name = currentUser.displayName || currentUser.email.split('@')[0];
   document.getElementById('user-name').textContent = name;
-  const initials = name.slice(0,2).toUpperCase();
+  const initials = name.slice(0, 2).toUpperCase();
   document.getElementById('user-avatar').textContent = initials;
   document.getElementById('mobile-avatar').textContent = initials;
+  document.getElementById('profile-name').value = name;
 }
 
-window.handleLogin = async function() {
+window.handleLogin = async function () {
   const email = document.getElementById('login-email').value.trim();
   const pass = document.getElementById('login-password').value;
-  const errEl = document.getElementById('login-error');
-  errEl.textContent = '';
-  try {
-    await signInWithEmailAndPassword(auth, email, pass);
-  } catch(e) {
-    errEl.textContent = friendlyAuthError(e.code);
-  }
+  const err = document.getElementById('login-error');
+  err.textContent = '';
+  try { await signInWithEmailAndPassword(auth, email, pass); }
+  catch (e) { err.textContent = friendlyError(e.code); }
 };
 
-window.handleRegister = async function() {
+window.handleRegister = async function () {
   const name = document.getElementById('reg-name').value.trim();
   const email = document.getElementById('reg-email').value.trim();
   const pass = document.getElementById('reg-password').value;
-  const errEl = document.getElementById('reg-error');
-  errEl.textContent = '';
-  if (!name) { errEl.textContent = 'Please enter a display name.'; return; }
+  const err = document.getElementById('reg-error');
+  err.textContent = '';
+  if (!name) { err.textContent = 'Please enter a callsign.'; return; }
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, pass);
     await updateProfile(cred.user, { displayName: name });
-    await setDoc(doc(db, 'users', cred.user.uid), {
-      displayName: name, email, joinedAt: serverTimestamp()
-    });
-  } catch(e) {
-    errEl.textContent = friendlyAuthError(e.code);
-  }
+    await setDoc(doc(db, 'users', cred.user.uid), { displayName: name, email, joinedAt: serverTimestamp() });
+  } catch (e) { err.textContent = friendlyError(e.code); }
 };
 
-window.handleLogout = async function() {
+window.handleLogout = async function () {
   if (unsubStrats) unsubStrats();
-  if (unsubComps) unsubComps();
+  if (unsubMatches) unsubMatches();
   await signOut(auth);
 };
 
-window.switchTab = function(tab) {
-  document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+window.switchTab = function (tab) {
   document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
   document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
   document.querySelectorAll('.auth-tab').forEach((t, i) => {
-    if ((i === 0 && tab === 'login') || (i === 1 && tab === 'register')) t.classList.add('active');
+    t.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'register'));
   });
 };
 
-function friendlyAuthError(code) {
-  const map = {
-    'auth/user-not-found': 'No account found with that email.',
+function friendlyError(code) {
+  const m = {
+    'auth/user-not-found': 'No account with that email.',
     'auth/wrong-password': 'Incorrect password.',
-    'auth/email-already-in-use': 'That email is already registered.',
+    'auth/email-already-in-use': 'Email already registered.',
     'auth/weak-password': 'Password must be at least 6 characters.',
-    'auth/invalid-email': 'Please enter a valid email address.',
-    'auth/too-many-requests': 'Too many attempts. Please try again later.',
+    'auth/invalid-email': 'Invalid email address.',
+    'auth/too-many-requests': 'Too many attempts. Try again later.',
     'auth/invalid-credential': 'Incorrect email or password.'
   };
-  return map[code] || 'Something went wrong. Please try again.';
+  return m[code] || 'Something went wrong. Try again.';
 }
 
 // ===== APP INIT =====
 function initApp() {
-  populateMapSelects();
-  initReference();
-  initStratBuilder();
-  initTeamComp();
-  initMapPlanner();
+  populateAllSelects();
+  initStratBoard();
+  initTeamHub();
+  initStats();
+  loadRoster();
   subscribeStrats();
-  subscribeComps();
-  loadMemberCount();
+  subscribeMatches();
+  initMapPlanner(currentUser);
 }
 
-function populateMapSelects() {
-  ['strat-map','comp-map'].forEach(id => {
+function populateAllSelects() {
+  // Map selects
+  ['strat-map', 'meta-map', 'bans-map-select', 'map-notes-select',
+    'stats-map-filter'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.innerHTML = '';
-    MAPS.forEach(m => {
+    if (el.id === 'stats-map-filter') el.innerHTML = '<option value="">All maps</option>';
+    MAP_NAMES.forEach(m => {
       const o = document.createElement('option');
       o.value = m; o.textContent = m;
       el.appendChild(o);
     });
   });
-  ['sb-map-filter','tc-map-filter'].forEach(id => {
+
+  // Operator ban selects
+  ['atk-ban-select', 'def-ban-select'].forEach((id, i) => {
     const el = document.getElementById(id);
     if (!el) return;
-    MAPS.forEach(m => {
+    const ops = i === 0 ? DEFENSE_OPERATORS : ATTACK_OPERATORS;
+    el.innerHTML = '<option value="">Select operator...</option>';
+    ops.forEach(op => {
       const o = document.createElement('option');
-      o.value = m; o.textContent = m;
+      o.value = op; o.textContent = op;
       el.appendChild(o);
     });
   });
+
+  updateStratSites();
+  updateMetaSites();
 }
 
 // ===== NAVIGATION =====
-window.showPage = function(page) {
+window.showPage = function (page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  document.querySelector(`[data-page="${page}"]`).classList.add('active');
-  if (window.innerWidth <= 768) {
-    document.getElementById('sidebar').classList.remove('open');
-  }
+  const navEl = document.querySelector(`[data-page="${page}"]`);
+  if (navEl) navEl.classList.add('active');
+  if (window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('open');
+  if (page === 'stats') renderStats();
+  if (page === 'dashboard') renderDashboard();
+  if (page === 'settings') loadRoster();
 };
-window.toggleSidebar = function() {
+
+window.toggleSidebar = function () {
   document.getElementById('sidebar').classList.toggle('open');
 };
 
-// ===== REFERENCE =====
-function initReference() {
-  const mapSel = document.getElementById('ref-map');
-  const siteSel = document.getElementById('ref-site');
-  const pills = document.getElementById('ref-map-pills');
-  MAPS.forEach(m => {
-    const o = document.createElement('option');
-    o.value = m; o.textContent = m;
-    mapSel.appendChild(o);
-    const pill = document.createElement('button');
-    pill.className = 'map-pill' + (m === activeMap ? ' active' : '');
-    pill.textContent = m;
-    pill.onclick = () => {
-      activeMap = m;
-      activeSite = Object.keys(META[m].sites)[0];
-      mapSel.value = m;
-      updateRefSites();
-      updateRefPills();
-      renderReference();
-    };
-    pills.appendChild(pill);
-  });
-  updateRefSites();
-  renderReference();
+// ===== STRAT BOARD =====
+function initStratBoard() {
+  buildStratOpSelector();
 }
 
-function updateRefSites() {
-  const siteSel = document.getElementById('ref-site');
-  siteSel.innerHTML = '';
-  Object.keys(META[activeMap].sites).forEach(s => {
-    const o = document.createElement('option');
-    o.value = s; o.textContent = s;
-    siteSel.appendChild(o);
-  });
-  siteSel.value = activeSite;
-}
-
-function updateRefPills() {
-  document.querySelectorAll('#ref-map-pills .map-pill').forEach((p, i) => {
-    p.classList.toggle('active', MAPS[i] === activeMap);
+function subscribeStrats() {
+  const q = query(collection(db, 'strats'), orderBy('createdAt', 'desc'));
+  unsubStrats = onSnapshot(q, snap => {
+    allStrats = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderStratTree();
+    renderDashboard();
   });
 }
 
-window.renderReference = function() {
-  activeMap = document.getElementById('ref-map').value;
-  activeSite = document.getElementById('ref-site').value;
-  updateRefPills();
-  const site = META[activeMap].sites[activeSite];
-  const html = `
-    <div class="ref-site-header">${activeMap} — ${activeSite}</div>
-    <div class="ref-site-sub">Pro meta operator picks and setup notes · Y11S1</div>
-    <div class="ref-section-label">Attack operators</div>
-    <div class="op-grid">${site.atk.map(o => opCardHTML(o, 'atk')).join('')}</div>
-    <hr class="ref-divider">
-    <div class="ref-section-label">Defense operators</div>
-    <div class="op-grid">${site.def.map(o => opCardHTML(o, 'def')).join('')}</div>
-    <hr class="ref-divider">
-    <div class="ref-section-label">Setup notes</div>
-    <div class="setup-card"><p>${site.setup}</p></div>
-    <div class="tip-card"><strong>Pro tip:</strong> ${site.tip}</div>
-  `;
-  document.getElementById('ref-content').innerHTML = html;
+function subscribeMatches() {
+  const q = query(collection(db, 'matches'), orderBy('createdAt', 'desc'));
+  unsubMatches = onSnapshot(q, snap => {
+    allMatches = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderDashboard();
+    if (document.getElementById('page-stats').classList.contains('active')) renderStats();
+  });
+}
+
+window.renderStratTree = function () {
+  const side = document.getElementById('sb-side-select').value;
+  const strats = allStrats.filter(s => s.side === side);
+  const tree = document.getElementById('strat-tree');
+
+  // Group by map then folder
+  const byMap = {};
+  MAP_NAMES.forEach(m => { byMap[m] = {}; });
+  strats.forEach(s => {
+    if (!byMap[s.map]) byMap[s.map] = {};
+    const folder = s.folder || 'General';
+    if (!byMap[s.map][folder]) byMap[s.map][folder] = [];
+    byMap[s.map][folder].push(s);
+  });
+
+  let html = '';
+  MAP_NAMES.forEach(map => {
+    const folders = byMap[map];
+    const hasStrats = Object.values(folders).some(f => f.length > 0);
+    const mapCategory = MAPS[map]?.category || 'ranked';
+    html += `<div class="strat-map-item">
+      <button class="strat-map-btn" onclick="toggleMapNode(this, '${map}')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        ${map}
+        <span class="badge badge-${mapCategory}" style="margin-left:auto;font-size:9px">${mapCategory}</span>
+      </button>
+      <div class="strat-children" id="map-node-${map.replace(/\s/g,'-')}" style="display:none">`;
+
+    Object.keys(folders).forEach(folder => {
+      if (!folders[folder].length) return;
+      html += `<div>
+        <button class="strat-folder-btn" onclick="toggleFolderNode(this, '${map}-${folder}')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          ${folder}
+        </button>
+        <div id="folder-node-${map.replace(/\s/g,'-')}-${folder.replace(/\s/g,'-')}" style="display:none">`;
+      folders[folder].forEach(s => {
+        html += `<button class="strat-item-btn ${activeStratId === s.id ? 'active' : ''}" onclick="selectStrat('${s.id}')">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+          ${s.name}
+        </button>`;
+      });
+      html += `</div>
+        <button class="add-strat-btn" onclick="openNewStratModalFor('${map}', '${folder}', '${side}')">+ Add strat</button>
+      </div>`;
+    });
+
+    html += `<button class="add-strat-btn" onclick="openNewStratModalFor('${map}', '', '${side}')">+ New strat / folder</button>
+      </div></div>`;
+  });
+
+  tree.innerHTML = html;
+
+  // Re-open active map/folder if strat selected
+  if (activeStratId) {
+    const s = allStrats.find(x => x.id === activeStratId);
+    if (s) {
+      const mapNode = document.getElementById(`map-node-${s.map.replace(/\s/g, '-')}`);
+      if (mapNode) {
+        mapNode.style.display = 'block';
+        const folder = s.folder || 'General';
+        const folderNode = document.getElementById(`folder-node-${s.map.replace(/\s/g, '-')}-${folder.replace(/\s/g, '-')}`);
+        if (folderNode) folderNode.style.display = 'block';
+      }
+    }
+  }
 };
 
-function opCardHTML(op, side) {
-  return `<div class="op-card">
-    <div class="op-card-name">${op.name}</div>
-    <div class="op-card-badges">
-      <span class="badge badge-${side}">${side === 'atk' ? 'Attack' : 'Defense'}</span>
-      <span class="badge badge-role">${op.role}</span>
+window.toggleMapNode = function (btn, map) {
+  const node = document.getElementById(`map-node-${map.replace(/\s/g, '-')}`);
+  const open = node.style.display !== 'none';
+  node.style.display = open ? 'none' : 'block';
+  btn.classList.toggle('open', !open);
+};
+
+window.toggleFolderNode = function (btn, key) {
+  const node = document.getElementById(`folder-node-${key.replace(/\s/g, '-')}`);
+  if (!node) return;
+  node.style.display = node.style.display === 'none' ? 'block' : 'none';
+};
+
+window.selectStrat = function (id) {
+  activeStratId = id;
+  renderStratTree();
+  renderStratDetail(id);
+};
+
+function renderStratDetail(id) {
+  const s = allStrats.find(x => x.id === id);
+  if (!s) return;
+  const matches = allMatches.filter(m => m.stratId === id);
+  const wins = matches.filter(m => m.result === 'win').length;
+  const winRate = matches.length ? Math.round((wins / matches.length) * 100) : null;
+  const sideColor = s.side === 'attack' ? 'atk' : 'def';
+  const isOwner = s.createdById === currentUser?.uid;
+
+  const opRoles = s.opRoles || {};
+
+  document.getElementById('strat-detail').innerHTML = `
+    <div class="strat-detail-header">
+      <div class="strat-detail-title">${s.name}</div>
+      <span class="badge badge-${sideColor}">${s.side}</span>
+      <span class="badge badge-role">${s.map} — ${s.site || ''}</span>
+      <span class="badge badge-${s.difficulty}">${s.difficulty}</span>
+      ${winRate !== null ? `<span class="badge" style="background:rgba(76,175,125,0.12);color:var(--success)">${winRate}% WR</span>` : ''}
+      <button class="btn-accent-sm" onclick="openMatchModal('${id}')">Log match</button>
+      ${isOwner ? `<button class="btn-danger" onclick="deleteStrat('${id}')">Delete</button>` : ''}
     </div>
-    <div class="op-card-desc">${op.desc}</div>
+    <div class="strat-tabs">
+      <button class="strat-tab active" onclick="switchStratTab(this,'overview')">Overview</button>
+      <button class="strat-tab" onclick="switchStratTab(this,'roles')">Operator Roles</button>
+      <button class="strat-tab" onclick="switchStratTab(this,'matchlog')">Match Log (${matches.length})</button>
+      <button class="strat-tab" onclick="switchStratTab(this,'bans')">Bans</button>
+    </div>
+
+    <div id="strat-tab-overview" class="strat-tab-content active">
+      ${s.description ? `<p style="font-size:13px;color:var(--text-2);line-height:1.8;margin-bottom:1rem">${s.description}</p>` : ''}
+      ${s.operators?.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1rem">${s.operators.map(o => `<span class="badge badge-role" style="font-size:12px;padding:4px 10px">${o}</span>`).join('')}</div>` : ''}
+      ${s.steps?.length ? `<div class="section-title" style="margin-bottom:.5rem">Steps</div>
+      <div style="display:flex;flex-direction:column;gap:6px">${s.steps.map((st, i) => `
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <div style="width:20px;height:20px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);color:var(--gold);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">${i + 1}</div>
+          <div style="font-size:13px;color:var(--text-2);line-height:1.7">${st}</div>
+        </div>`).join('')}</div>` : ''}
+      ${isOwner ? `<button class="btn-sm" onclick="openEditStratModal('${id}')" style="margin-top:1rem">Edit strat</button>` : ''}
+    </div>
+
+    <div id="strat-tab-roles" class="strat-tab-content">
+      <div class="section-title" style="margin-bottom:.75rem">Operator role cards</div>
+      ${s.operators?.length ? `<div class="op-role-grid">${s.operators.map(op => `
+        <div class="op-role-card">
+          <div class="op-role-header">
+            <div class="op-role-name">${op}</div>
+            <button class="btn-sm" onclick="openOpRoleModal('${id}','${op}')">Edit role</button>
+          </div>
+          <div class="op-role-notes">${opRoles[op] || '<span style="color:var(--text-3);font-style:italic">No role notes yet. Click edit to add setup tasks, timing, and positioning.</span>'}</div>
+        </div>`).join('')}</div>` : '<div class="empty-state">No operators assigned to this strat yet.</div>'}
+    </div>
+
+    <div id="strat-tab-matchlog" class="strat-tab-content">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <div class="section-title">Match history</div>
+        <button class="btn-accent-sm" onclick="openMatchModal('${id}')">+ Log match</button>
+      </div>
+      ${matches.length ? `
+        <div style="display:flex;gap:12px;margin-bottom:1.25rem;flex-wrap:wrap">
+          <div class="stat-card" style="flex:1;min-width:100px"><div class="stat-label">Played</div><div class="stat-value">${matches.length}</div></div>
+          <div class="stat-card" style="flex:1;min-width:100px"><div class="stat-label">Wins</div><div class="stat-value green">${wins}</div></div>
+          <div class="stat-card" style="flex:1;min-width:100px"><div class="stat-label">Win rate</div><div class="stat-value gold">${winRate}%</div></div>
+        </div>
+        <div class="match-log-list">${matches.map(m => matchItemHTML(m)).join('')}</div>` :
+        '<div class="empty-state">No matches logged yet for this strat.</div>'}
+    </div>
+
+    <div id="strat-tab-bans" class="strat-tab-content">
+      <p style="font-size:13px;color:var(--text-2);margin-bottom:1rem">Suggested bans for <strong style="color:var(--text-1)">${s.map}</strong>. Set team-wide ban preferences in Team Hub → Ban Planner.</p>
+      ${renderInlineBans(s.map)}
+    </div>
+  `;
+}
+
+function renderInlineBans(map) {
+  const bansDoc = currentBans;
+  if (!bansDoc.atk?.length && !bansDoc.def?.length) {
+    return `<div class="empty-state">No bans set for this map yet. Go to Team Hub → Ban Planner to set them.</div>`;
+  }
+  return `<div class="ban-panel">
+    <div><div class="section-title">Attack bans</div><div class="ban-list">${(bansDoc.atk||[]).map(b => `<span class="ban-chip">${b}</span>`).join('') || '<span style="color:var(--text-3);font-size:13px">None set</span>'}</div></div>
+    <div><div class="section-title">Defense bans</div><div class="ban-list">${(bansDoc.def||[]).map(b => `<span class="ban-chip">${b}</span>`).join('') || '<span style="color:var(--text-3);font-size:13px">None set</span>'}</div></div>
   </div>`;
 }
 
-// ===== STRAT BUILDER =====
-function initStratBuilder() {
-  buildOpSelector('op-selector', selectedOps, 'selected-ops', 5);
-  updateStratSitesInternal();
-}
-
-window.updateStratSites = function() {
-  updateStratSitesInternal();
+window.switchStratTab = function (btn, tab) {
+  document.querySelectorAll('.strat-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.strat-tab-content').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  const el = document.getElementById(`strat-tab-${tab}`);
+  if (el) el.classList.add('active');
 };
-function updateStratSitesInternal() {
-  const map = document.getElementById('strat-map').value;
-  const siteSel = document.getElementById('strat-site');
-  siteSel.innerHTML = '';
-  if (META[map]) {
-    Object.keys(META[map].sites).forEach(s => {
-      const o = document.createElement('option');
-      o.value = s; o.textContent = s;
-      siteSel.appendChild(o);
-    });
-  }
+
+function matchItemHTML(m) {
+  const playerRows = (m.players || []).map(p => `
+    <div class="player-stat-row">
+      <div class="player-stat-name">${p.name}</div>
+      <div class="player-stat-vals">
+        <span>${p.kills}K</span><span>${p.deaths}D</span><span>${p.assists}A</span>
+        <span class="kost-${p.kost ? 'yes' : 'no'}">KOST:${p.kost ? '✓' : '✗'}</span>
+      </div>
+    </div>`).join('');
+  return `<div class="match-item">
+    <div class="match-item-header">
+      <div class="match-result ${m.result}">${m.result.toUpperCase()}</div>
+      <span style="font-size:12px;color:var(--text-3)">Rounds: ${m.rounds || '—'}</span>
+      <span class="activity-time">${m.createdAt?.toDate ? timeAgo(m.createdAt.toDate()) : ''}</span>
+    </div>
+    ${m.notes ? `<p style="font-size:12px;color:var(--text-2);margin-bottom:.5rem">${m.notes}</p>` : ''}
+    ${playerRows ? `<div class="match-stats-grid">${playerRows}</div>` : ''}
+  </div>`;
 }
 
-window.openNewStratModal = function() {
+// ===== NEW STRAT MODAL =====
+window.openNewStratModal = function () {
   editStratId = null;
-  selectedOps = [];
+  selectedStratOps = [];
   stratSteps = [];
   document.getElementById('strat-modal-title').textContent = 'New Strat';
   document.getElementById('strat-name').value = '';
   document.getElementById('strat-desc').value = '';
-  document.getElementById('strat-map').value = MAPS[0];
-  updateStratSitesInternal();
-  document.getElementById('strat-side').value = 'attack';
+  document.getElementById('strat-folder').value = '';
+  document.getElementById('strat-map').value = MAP_NAMES[0];
+  document.getElementById('strat-side').value = 'defense';
   document.getElementById('strat-difficulty').value = 'intermediate';
   document.getElementById('strat-steps-list').innerHTML = '';
-  buildOpSelector('op-selector', selectedOps, 'selected-ops', 5);
+  updateStratSites();
+  buildStratOpSelector();
   document.getElementById('strat-modal').style.display = 'flex';
 };
 
-window.saveStrat = async function() {
-  const name = document.getElementById('strat-name').value.trim();
-  if (!name) { showToast('Please enter a strat name', 'error'); return; }
-  const data = {
-    name,
-    map: document.getElementById('strat-map').value,
-    site: document.getElementById('strat-site').value,
-    side: document.getElementById('strat-side').value,
-    difficulty: document.getElementById('strat-difficulty').value,
-    operators: [...selectedOps],
-    description: document.getElementById('strat-desc').value.trim(),
-    steps: stratSteps.map((_, i) => document.getElementById('step-' + i)?.value || '').filter(Boolean),
-    createdBy: currentUser.displayName || currentUser.email,
-    createdById: currentUser.uid,
-    createdAt: serverTimestamp()
-  };
-  try {
-    if (editStratId) {
-      await updateDoc(doc(db, 'strats', editStratId), data);
-      showToast('Strat updated', 'success');
-    } else {
-      await addDoc(collection(db, 'strats'), data);
-      await logActivity(`created strat "${name}"`);
-      showToast('Strat saved', 'success');
-    }
-    closeModal('strat-modal');
-  } catch(e) {
-    showToast('Failed to save: ' + e.message, 'error');
-  }
+window.openNewStratModalFor = function (map, folder, side) {
+  openNewStratModal();
+  document.getElementById('strat-map').value = map;
+  document.getElementById('strat-folder').value = folder;
+  document.getElementById('strat-side').value = side;
+  updateStratSites();
+  buildStratOpSelector();
 };
 
-window.addStep = function() {
+window.openEditStratModal = function (id) {
+  const s = allStrats.find(x => x.id === id);
+  if (!s) return;
+  editStratId = id;
+  selectedStratOps = [...(s.operators || [])];
+  stratSteps = [...(s.steps || [])];
+  document.getElementById('strat-modal-title').textContent = 'Edit Strat';
+  document.getElementById('strat-name').value = s.name;
+  document.getElementById('strat-desc').value = s.description || '';
+  document.getElementById('strat-folder').value = s.folder || '';
+  document.getElementById('strat-map').value = s.map;
+  document.getElementById('strat-side').value = s.side;
+  document.getElementById('strat-difficulty').value = s.difficulty;
+  updateStratSites();
+  setTimeout(() => { document.getElementById('strat-site').value = s.site; }, 50);
+  buildStratOpSelector();
+  const list = document.getElementById('strat-steps-list');
+  list.innerHTML = '';
+  stratSteps.forEach((st, i) => {
+    const row = document.createElement('div');
+    row.className = 'step-row';
+    row.innerHTML = `<div class="step-num">${i+1}</div><input type="text" id="step-${i}" value="${st}">`;
+    list.appendChild(row);
+  });
+  document.getElementById('strat-modal').style.display = 'flex';
+};
+
+window.updateStratSites = function () {
+  const map = document.getElementById('strat-map')?.value;
+  const siteSel = document.getElementById('strat-site');
+  if (!siteSel || !map || !MAPS[map]) return;
+  siteSel.innerHTML = '';
+  MAPS[map].sites.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s; o.textContent = s;
+    siteSel.appendChild(o);
+  });
+};
+
+function buildStratOpSelector() {
+  const side = document.getElementById('strat-side')?.value || 'defense';
+  const ops = side === 'attack' ? ATTACK_OPERATORS : DEFENSE_OPERATORS;
+  const grid = document.getElementById('strat-op-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  ops.forEach(op => {
+    const btn = document.createElement('button');
+    btn.className = 'op-btn' + (selectedStratOps.includes(op) ? ' selected' : '');
+    btn.textContent = op;
+    btn.onclick = () => toggleStratOp(op);
+    grid.appendChild(btn);
+  });
+  renderSelectedStratOps();
+}
+
+document.addEventListener('change', e => {
+  if (e.target.id === 'strat-side') buildStratOpSelector();
+});
+
+function toggleStratOp(op) {
+  const idx = selectedStratOps.indexOf(op);
+  if (idx > -1) { selectedStratOps.splice(idx, 1); }
+  else {
+    if (selectedStratOps.length >= 5) { showToast('Max 5 operators'); return; }
+    selectedStratOps.push(op);
+  }
+  buildStratOpSelector();
+}
+
+function renderSelectedStratOps() {
+  const display = document.getElementById('strat-selected-ops');
+  if (!display) return;
+  display.innerHTML = selectedStratOps.map(op => `
+    <div class="op-tag">${op}<button onclick="toggleStratOp('${op}')" aria-label="Remove">×</button></div>
+  `).join('');
+}
+
+window.addStep = function () {
   const idx = stratSteps.length;
   stratSteps.push('');
   const list = document.getElementById('strat-steps-list');
@@ -595,316 +514,510 @@ window.addStep = function() {
   list.appendChild(row);
 };
 
-function subscribeStrats() {
-  const q = query(collection(db, 'strats'), orderBy('createdAt', 'desc'));
-  unsubStrats = onSnapshot(q, snap => {
-    allStrats = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderStratCards();
-    renderRecentStrats();
-    document.getElementById('strat-count').textContent = allStrats.length;
-  });
-}
+window.saveStrat = async function () {
+  const name = document.getElementById('strat-name').value.trim();
+  if (!name) { showToast('Please enter a strat name', 'error'); return; }
+  const steps = stratSteps.map((_, i) => document.getElementById(`step-${i}`)?.value || '').filter(Boolean);
+  const data = {
+    name,
+    map: document.getElementById('strat-map').value,
+    site: document.getElementById('strat-site').value,
+    side: document.getElementById('strat-side').value,
+    difficulty: document.getElementById('strat-difficulty').value,
+    folder: document.getElementById('strat-folder').value.trim() || 'General',
+    operators: [...selectedStratOps],
+    description: document.getElementById('strat-desc').value.trim(),
+    steps,
+    createdBy: currentUser.displayName || currentUser.email,
+    createdById: currentUser.uid,
+    updatedAt: serverTimestamp()
+  };
+  try {
+    if (editStratId) {
+      await updateDoc(doc(db, 'strats', editStratId), data);
+      showToast('Strat updated', 'success');
+    } else {
+      data.createdAt = serverTimestamp();
+      const ref = await addDoc(collection(db, 'strats'), data);
+      activeStratId = ref.id;
+      await logActivity(`created strat "${name}"`);
+      showToast('Strat saved', 'success');
+    }
+    closeModal('strat-modal');
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
+};
 
-function renderStratCards() {
-  const mapFilter = document.getElementById('sb-map-filter')?.value || '';
-  const sideFilter = document.getElementById('sb-side-filter')?.value || '';
-  let strats = allStrats;
-  if (mapFilter) strats = strats.filter(s => s.map === mapFilter);
-  if (sideFilter) strats = strats.filter(s => s.side === sideFilter);
-  const container = document.getElementById('strat-list-container');
-  if (!strats.length) {
-    container.innerHTML = '<div class="empty-state">No strats yet. Click "+ New Strat" to create one.</div>';
+window.deleteStrat = async function (id) {
+  if (!confirm('Delete this strat? This cannot be undone.')) return;
+  await deleteDoc(doc(db, 'strats', id));
+  activeStratId = null;
+  document.getElementById('strat-detail').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-3);font-size:13px">Select a strat from the left panel</div>';
+  showToast('Strat deleted');
+};
+
+// ===== OPERATOR ROLE MODAL =====
+window.openOpRoleModal = function (stratId, op) {
+  opRoleEditStratId = stratId;
+  opRoleEditOp = op;
+  const s = allStrats.find(x => x.id === stratId);
+  document.getElementById('op-role-modal-title').textContent = op + ' — Role Notes';
+  document.getElementById('op-role-op').value = op;
+  document.getElementById('op-role-notes').value = s?.opRoles?.[op] || '';
+  document.getElementById('op-role-modal').style.display = 'flex';
+};
+
+window.saveOpRole = async function () {
+  const notes = document.getElementById('op-role-notes').value.trim();
+  const s = allStrats.find(x => x.id === opRoleEditStratId);
+  if (!s) return;
+  const opRoles = { ...(s.opRoles || {}), [opRoleEditOp]: notes };
+  await updateDoc(doc(db, 'strats', opRoleEditStratId), { opRoles });
+  showToast('Role notes saved', 'success');
+  closeModal('op-role-modal');
+  renderStratDetail(opRoleEditStratId);
+};
+
+// ===== MATCH LOG =====
+window.openMatchModal = function (stratId) {
+  const s = allStrats.find(x => x.id === stratId);
+  if (!s) return;
+  document.getElementById('match-modal').dataset.stratId = stratId;
+  document.getElementById('match-result').value = 'win';
+  document.getElementById('match-rounds').value = '7';
+  document.getElementById('match-notes').value = '';
+  buildMatchPlayersList();
+  document.getElementById('match-modal').style.display = 'flex';
+};
+
+function buildMatchPlayersList() {
+  const list = document.getElementById('match-players-list');
+  if (!list) return;
+  if (!allRoster.length) {
+    list.innerHTML = '<div class="empty-state">No team members found. Have your team register accounts first.</div>';
     return;
   }
-  container.innerHTML = strats.map(s => stratCardHTML(s)).join('');
-}
-
-function stratCardHTML(s) {
-  const sideColor = s.side === 'attack' ? 'atk' : 'def';
-  const ops = (s.operators || []).map(o => `<span class="op-chip">${o}</span>`).join('');
-  const isOwner = s.createdById === currentUser?.uid;
-  return `<div class="strat-card">
-    <div class="strat-card-header">
-      <div class="strat-card-name">${s.name}</div>
-    </div>
-    <div class="strat-card-meta">
-      <span class="badge badge-${sideColor}">${s.side}</span>
-      <span class="badge badge-role">${s.map}</span>
-      <span class="badge badge-role">${s.site || ''}</span>
-      <span class="badge badge-difficulty-${s.difficulty}">${s.difficulty}</span>
-    </div>
-    ${ops ? `<div class="strat-card-ops">${ops}</div>` : ''}
-    ${s.description ? `<div class="strat-card-desc">${s.description}</div>` : ''}
-    <div class="strat-card-footer">
-      <span class="strat-card-author">by ${s.createdBy || 'Unknown'}</span>
-      ${isOwner ? `<button class="btn-danger" onclick="deleteStrat('${s.id}')">Delete</button>` : ''}
-    </div>
-  </div>`;
-}
-
-function renderRecentStrats() {
-  const container = document.getElementById('recent-strats');
-  const recent = allStrats.slice(0, 5);
-  if (!recent.length) {
-    container.innerHTML = '<div class="empty-state">No strats saved yet.</div>';
-    return;
-  }
-  container.innerHTML = recent.map(s => `
-    <div class="activity-item">
-      <span class="badge badge-${s.side === 'attack' ? 'atk' : 'def'}">${s.side}</span>
-      <span>${s.name}</span>
-      <span class="badge badge-role" style="margin-left:4px">${s.map}</span>
-      <span class="activity-time">${s.createdBy}</span>
+  list.innerHTML = allRoster.map(member => `
+    <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:.75rem 1rem;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:.75rem">
+        <input type="checkbox" id="player-check-${member.uid}" checked style="accent-color:var(--gold)">
+        <label for="player-check-${member.uid}" style="font-size:14px;font-weight:500;color:var(--gold);cursor:pointer">${member.displayName}</label>
+      </div>
+      <div class="form-row-3" style="gap:8px">
+        <div class="form-group" style="margin:0">
+          <label>Kills</label>
+          <input type="number" id="kills-${member.uid}" min="0" max="20" value="0">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Deaths</label>
+          <input type="number" id="deaths-${member.uid}" min="0" max="20" value="0">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Assists</label>
+          <input type="number" id="assists-${member.uid}" min="0" max="20" value="0">
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:.5rem">
+        <input type="checkbox" id="kost-${member.uid}" style="accent-color:var(--gold)">
+        <label for="kost-${member.uid}" style="font-size:13px;color:var(--text-2);cursor:pointer">KOST — had positive impact this round (K/O/S/T)</label>
+      </div>
     </div>
   `).join('');
 }
 
-window.filterStrats = function() { renderStratCards(); };
-
-window.deleteStrat = async function(id) {
-  if (!confirm('Delete this strat?')) return;
-  await deleteDoc(doc(db, 'strats', id));
-  showToast('Strat deleted');
+window.saveMatch = async function () {
+  const stratId = document.getElementById('match-modal').dataset.stratId;
+  const s = allStrats.find(x => x.id === stratId);
+  if (!s) return;
+  const players = allRoster
+    .filter(m => document.getElementById(`player-check-${m.uid}`)?.checked)
+    .map(m => ({
+      name: m.displayName,
+      uid: m.uid,
+      kills: parseInt(document.getElementById(`kills-${m.uid}`)?.value || 0),
+      deaths: parseInt(document.getElementById(`deaths-${m.uid}`)?.value || 0),
+      assists: parseInt(document.getElementById(`assists-${m.uid}`)?.value || 0),
+      kost: document.getElementById(`kost-${m.uid}`)?.checked || false
+    }));
+  const data = {
+    stratId,
+    stratName: s.name,
+    map: s.map,
+    site: s.site,
+    side: s.side,
+    result: document.getElementById('match-result').value,
+    rounds: parseInt(document.getElementById('match-rounds').value),
+    notes: document.getElementById('match-notes').value.trim(),
+    players,
+    loggedBy: currentUser.displayName || currentUser.email,
+    loggedById: currentUser.uid,
+    createdAt: serverTimestamp()
+  };
+  try {
+    await addDoc(collection(db, 'matches'), data);
+    await logActivity(`logged a ${data.result} on "${s.name}"`);
+    showToast('Match logged', 'success');
+    closeModal('match-modal');
+    if (activeStratId === stratId) renderStratDetail(stratId);
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
 };
 
-// ===== TEAM COMP =====
-function initTeamComp() {
-  buildOpSelector('comp-op-selector', compSelectedOps, 'comp-selected-ops', 5);
-  updateCompSitesInternal();
-}
-
-window.updateCompSites = function() { updateCompSitesInternal(); };
-function updateCompSitesInternal() {
-  const map = document.getElementById('comp-map').value;
-  const siteSel = document.getElementById('comp-site');
-  siteSel.innerHTML = '';
-  if (META[map]) {
-    Object.keys(META[map].sites).forEach(s => {
+// ===== STATS =====
+function initStats() {
+  const mapSel = document.getElementById('stats-map-filter');
+  if (mapSel) {
+    mapSel.innerHTML = '<option value="">All maps</option>';
+    MAP_NAMES.forEach(m => {
       const o = document.createElement('option');
-      o.value = s; o.textContent = s;
-      siteSel.appendChild(o);
+      o.value = m; o.textContent = m;
+      mapSel.appendChild(o);
     });
   }
 }
 
-window.openNewCompModal = function() {
-  compSelectedOps = [];
-  document.getElementById('comp-map').value = MAPS[0];
-  updateCompSitesInternal();
-  document.getElementById('comp-name').value = '';
-  document.getElementById('comp-notes').value = '';
-  document.getElementById('comp-side').value = 'attack';
-  buildOpSelector('comp-op-selector', compSelectedOps, 'comp-selected-ops', 5);
-  document.getElementById('comp-modal').style.display = 'flex';
+window.renderStats = function () {
+  const mapFilter = document.getElementById('stats-map-filter')?.value || '';
+  const sideFilter = document.getElementById('stats-side-filter')?.value || '';
+  let matches = allMatches;
+  if (mapFilter) matches = matches.filter(m => m.map === mapFilter);
+  if (sideFilter) matches = matches.filter(m => m.side === sideFilter);
+
+  const container = document.getElementById('stats-content');
+  if (!matches.length) {
+    container.innerHTML = '<div class="empty-state">No matches logged yet. Log matches on your strats to see stats here.</div>';
+    return;
+  }
+
+  const wins = matches.filter(m => m.result === 'win').length;
+  const overallWR = Math.round((wins / matches.length) * 100);
+
+  // By map
+  const byMap = {};
+  matches.forEach(m => {
+    if (!byMap[m.map]) byMap[m.map] = { wins: 0, total: 0 };
+    byMap[m.map].total++;
+    if (m.result === 'win') byMap[m.map].wins++;
+  });
+
+  // By strat
+  const byStrat = {};
+  matches.forEach(m => {
+    if (!byStrat[m.stratName]) byStrat[m.stratName] = { wins: 0, total: 0, map: m.map };
+    byStrat[m.stratName].total++;
+    if (m.result === 'win') byStrat[m.stratName].wins++;
+  });
+
+  // By player (KOST)
+  const byPlayer = {};
+  matches.forEach(m => {
+    (m.players || []).forEach(p => {
+      if (!byPlayer[p.name]) byPlayer[p.name] = { kills: 0, deaths: 0, assists: 0, kost: 0, rounds: 0 };
+      byPlayer[p.name].kills += p.kills || 0;
+      byPlayer[p.name].deaths += p.deaths || 0;
+      byPlayer[p.name].assists += p.assists || 0;
+      byPlayer[p.name].rounds++;
+      if (p.kost) byPlayer[p.name].kost++;
+    });
+  });
+
+  container.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">Matches played</div><div class="stat-value">${matches.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Wins</div><div class="stat-value green">${wins}</div></div>
+      <div class="stat-card"><div class="stat-label">Overall win rate</div><div class="stat-value gold">${overallWR}%</div></div>
+      <div class="stat-card"><div class="stat-label">Losses</div><div class="stat-value">${matches.length - wins}</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem">
+      <div class="stats-card">
+        <div class="stats-card-title">Win rate by map</div>
+        ${Object.entries(byMap).sort((a,b) => (b[1].wins/b[1].total)-(a[1].wins/a[1].total)).map(([map, d]) => {
+          const wr = Math.round((d.wins/d.total)*100);
+          return `<div class="stats-row">
+            <span class="stats-row-label">${map}</span>
+            <span class="stats-row-val">${wr}% <span style="color:var(--text-3);font-weight:400">(${d.total})</span></span>
+          </div>
+          <div class="win-rate-bar"><div class="win-rate-fill" style="width:${wr}%"></div></div>`;
+        }).join('')}
+      </div>
+      <div class="stats-card">
+        <div class="stats-card-title">Win rate by strat</div>
+        ${Object.entries(byStrat).sort((a,b) => b[1].total-a[1].total).slice(0,10).map(([name, d]) => {
+          const wr = Math.round((d.wins/d.total)*100);
+          return `<div class="stats-row">
+            <span class="stats-row-label" style="font-size:12px">${name}</span>
+            <span class="stats-row-val">${wr}% <span style="color:var(--text-3);font-weight:400">(${d.total})</span></span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    ${Object.keys(byPlayer).length ? `
+    <div class="stats-card">
+      <div class="stats-card-title">Player stats</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border)">
+              <th style="text-align:left;padding:8px 12px;color:var(--text-3);font-weight:600;letter-spacing:.05em">Player</th>
+              <th style="text-align:center;padding:8px;color:var(--text-3)">Matches</th>
+              <th style="text-align:center;padding:8px;color:var(--text-3)">K</th>
+              <th style="text-align:center;padding:8px;color:var(--text-3)">D</th>
+              <th style="text-align:center;padding:8px;color:var(--text-3)">A</th>
+              <th style="text-align:center;padding:8px;color:var(--text-3)">K/D</th>
+              <th style="text-align:center;padding:8px;color:var(--text-3)">KOST%</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.entries(byPlayer).map(([name, p]) => {
+              const kd = p.deaths ? (p.kills/p.deaths).toFixed(2) : p.kills.toFixed(2);
+              const kostPct = p.rounds ? Math.round((p.kost/p.rounds)*100) : 0;
+              return `<tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:8px 12px;color:var(--gold);font-weight:500">${name}</td>
+                <td style="text-align:center;padding:8px;color:var(--text-2)">${p.rounds}</td>
+                <td style="text-align:center;padding:8px;color:var(--success)">${p.kills}</td>
+                <td style="text-align:center;padding:8px;color:var(--danger)">${p.deaths}</td>
+                <td style="text-align:center;padding:8px;color:var(--text-2)">${p.assists}</td>
+                <td style="text-align:center;padding:8px;color:var(--text-1);font-weight:600">${kd}</td>
+                <td style="text-align:center;padding:8px;color:${kostPct >= 50 ? 'var(--success)' : 'var(--danger)'};font-weight:600">${kostPct}%</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ''}
+  `;
 };
 
-window.saveComp = async function() {
-  const name = document.getElementById('comp-name').value.trim();
-  if (!name) { showToast('Please enter a comp name', 'error'); return; }
-  if (compSelectedOps.length !== 5) { showToast('Please select exactly 5 operators', 'error'); return; }
-  const data = {
-    name,
-    map: document.getElementById('comp-map').value,
-    site: document.getElementById('comp-site').value,
-    side: document.getElementById('comp-side').value,
-    operators: [...compSelectedOps],
-    notes: document.getElementById('comp-notes').value.trim(),
-    createdBy: currentUser.displayName || currentUser.email,
-    createdById: currentUser.uid,
-    createdAt: serverTimestamp()
-  };
+// ===== TEAM HUB =====
+function initTeamHub() {
+  // Meta map/site selects
+  const metaMapSel = document.getElementById('meta-map');
+  if (metaMapSel) {
+    Object.keys(META).forEach(m => {
+      const o = document.createElement('option');
+      o.value = m; o.textContent = m;
+      metaMapSel.appendChild(o);
+    });
+  }
+  updateMetaSites();
+  renderMeta();
+
+  // Map notes select
+  const mapNotesSel = document.getElementById('map-notes-select');
+  if (mapNotesSel) {
+    MAP_NAMES.forEach(m => {
+      const o = document.createElement('option');
+      o.value = m; o.textContent = m;
+      mapNotesSel.appendChild(o);
+    });
+  }
+
+  // Bans map select
+  const bansMapSel = document.getElementById('bans-map-select');
+  if (bansMapSel) {
+    MAP_NAMES.forEach(m => {
+      const o = document.createElement('option');
+      o.value = m; o.textContent = m;
+      bansMapSel.appendChild(o);
+    });
+    loadBans();
+  }
+
+  loadTeamNotes();
+}
+
+window.showHubTab = function (tab) {
+  ['meta', 'notes', 'bans'].forEach(t => {
+    document.getElementById(`hub-${t}`).style.display = t === tab ? 'block' : 'none';
+    const btn = document.getElementById(`hub-tab-${t}`);
+    if (btn) btn.style.borderColor = t === tab ? 'var(--gold)' : 'var(--border)';
+    if (btn) btn.style.color = t === tab ? 'var(--gold)' : 'var(--text-2)';
+  });
+  if (tab === 'notes') loadTeamNotes();
+  if (tab === 'bans') loadBans();
+};
+
+window.updateMetaSites = function () {
+  const map = document.getElementById('meta-map')?.value;
+  const siteSel = document.getElementById('meta-site');
+  if (!siteSel || !map || !META[map]) return;
+  siteSel.innerHTML = '';
+  Object.keys(META[map]).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s; o.textContent = s;
+    siteSel.appendChild(o);
+  });
+};
+
+window.renderMeta = function () {
+  const map = document.getElementById('meta-map')?.value;
+  const site = document.getElementById('meta-site')?.value;
+  updateMetaSites();
+  if (!map || !site || !META[map]?.[site]) {
+    document.getElementById('meta-content').innerHTML = '<div class="empty-state">No meta data for this site yet.</div>';
+    return;
+  }
+  const d = META[map][site];
+  document.getElementById('meta-content').innerHTML = `
+    <div style="margin-bottom:1rem"><strong style="color:var(--text-1)">${map} — ${site}</strong> <span style="color:var(--text-3);font-size:12px">Y11S1 pro meta</span></div>
+    <div class="section-title">Attack operators</div>
+    <div class="meta-ref-grid">${d.atk.map(op => `<div class="meta-op-card"><div class="meta-op-name">${op.name} <span class="badge badge-role" style="font-size:9px">${op.role}</span></div><div class="meta-op-desc">${op.desc}</div></div>`).join('')}</div>
+    <div class="section-title" style="margin-top:1rem">Defense operators</div>
+    <div class="meta-ref-grid">${d.def.map(op => `<div class="meta-op-card"><div class="meta-op-name">${op.name} <span class="badge badge-role" style="font-size:9px">${op.role}</span></div><div class="meta-op-desc">${op.desc}</div></div>`).join('')}</div>
+    <div class="meta-setup">${d.setup}</div>
+    <div class="meta-tip"><strong>Pro tip:</strong> ${d.tip}</div>
+  `;
+};
+
+// ===== NOTES =====
+async function loadTeamNotes() {
   try {
-    await addDoc(collection(db, 'comps'), data);
-    await logActivity(`saved comp "${name}"`);
-    showToast('Comp saved', 'success');
-    closeModal('comp-modal');
-  } catch(e) {
-    showToast('Failed to save: ' + e.message, 'error');
-  }
+    const snap = await getDoc(doc(db, 'team_data', 'notes'));
+    if (snap.exists()) document.getElementById('team-notes-area').value = snap.data().text || '';
+  } catch (e) {}
+}
+
+window.saveTeamNotes = async function () {
+  const text = document.getElementById('team-notes-area').value;
+  await setDoc(doc(db, 'team_data', 'notes'), { text, updatedBy: currentUser.displayName, updatedAt: serverTimestamp() });
+  showToast('Notes saved', 'success');
 };
 
-function subscribeComps() {
-  const q = query(collection(db, 'comps'), orderBy('createdAt', 'desc'));
-  unsubComps = onSnapshot(q, snap => {
-    allComps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderCompCards();
-    document.getElementById('comp-count').textContent = allComps.length;
+window.loadMapNotes = async function () {
+  const map = document.getElementById('map-notes-select')?.value;
+  if (!map) return;
+  try {
+    const snap = await getDoc(doc(db, 'map_notes', map));
+    document.getElementById('map-notes-area').value = snap.exists() ? snap.data().text || '' : '';
+  } catch (e) {}
+};
+
+window.saveMapNotes = async function () {
+  const map = document.getElementById('map-notes-select')?.value;
+  const text = document.getElementById('map-notes-area').value;
+  await setDoc(doc(db, 'map_notes', map), { text, updatedBy: currentUser.displayName, updatedAt: serverTimestamp() });
+  showToast('Map notes saved', 'success');
+};
+
+// ===== BANS =====
+window.loadBans = async function () {
+  const map = document.getElementById('bans-map-select')?.value;
+  if (!map) return;
+  try {
+    const snap = await getDoc(doc(db, 'bans', map));
+    currentBans = snap.exists() ? { atk: snap.data().atk || [], def: snap.data().def || [] } : { atk: [], def: [] };
+  } catch (e) { currentBans = { atk: [], def: [] }; }
+  renderBanLists();
+};
+
+function renderBanLists() {
+  ['atk', 'def'].forEach(side => {
+    const list = document.getElementById(`${side}-ban-list`);
+    if (!list) return;
+    list.innerHTML = currentBans[side].map(op => `
+      <div class="ban-chip">${op}<button onclick="removeBan('${side}','${op}')">×</button></div>
+    `).join('') || `<span style="color:var(--text-3);font-size:13px">None set</span>`;
   });
 }
 
-function renderCompCards() {
-  const mapFilter = document.getElementById('tc-map-filter')?.value || '';
-  let comps = allComps;
-  if (mapFilter) comps = comps.filter(c => c.map === mapFilter);
-  const container = document.getElementById('comp-list-container');
-  if (!comps.length) {
-    container.innerHTML = '<div class="empty-state">No team comps yet. Click "+ New Comp" to build one.</div>';
-    return;
+window.addBan = function (side) {
+  const sel = document.getElementById(`${side}-ban-select`);
+  const op = sel?.value;
+  if (!op) return;
+  if (!currentBans[side].includes(op)) {
+    currentBans[side].push(op);
+    renderBanLists();
   }
-  container.innerHTML = comps.map(c => {
-    const ops = (c.operators || []).map(o => `<span class="op-chip">${o}</span>`).join('');
-    const isOwner = c.createdById === currentUser?.uid;
-    const sideColor = c.side === 'attack' ? 'atk' : 'def';
-    return `<div class="strat-card">
-      <div class="strat-card-header"><div class="strat-card-name">${c.name}</div></div>
-      <div class="strat-card-meta">
-        <span class="badge badge-${sideColor}">${c.side}</span>
-        <span class="badge badge-role">${c.map}</span>
-        <span class="badge badge-role">${c.site || ''}</span>
-      </div>
-      <div class="strat-card-ops">${ops}</div>
-      ${c.notes ? `<div class="strat-card-desc">${c.notes}</div>` : ''}
-      <div class="strat-card-footer">
-        <span class="strat-card-author">by ${c.createdBy || 'Unknown'}</span>
-        ${isOwner ? `<button class="btn-danger" onclick="deleteComp('${c.id}')">Delete</button>` : ''}
-      </div>
-    </div>`;
-  }).join('');
+};
+
+window.removeBan = function (side, op) {
+  currentBans[side] = currentBans[side].filter(x => x !== op);
+  renderBanLists();
+};
+
+window.saveBans = async function () {
+  const map = document.getElementById('bans-map-select')?.value;
+  if (!map) return;
+  await setDoc(doc(db, 'bans', map), { ...currentBans, updatedBy: currentUser.displayName, updatedAt: serverTimestamp() });
+  showToast('Bans saved', 'success');
+};
+
+// ===== DASHBOARD =====
+function renderDashboard() {
+  const wins = allMatches.filter(m => m.result === 'win').length;
+  const wr = allMatches.length ? Math.round((wins / allMatches.length) * 100) + '%' : '—';
+  document.getElementById('dash-strat-count').textContent = allStrats.length || '—';
+  document.getElementById('dash-match-count').textContent = allMatches.length || '—';
+  document.getElementById('dash-winrate').textContent = wr;
+  document.getElementById('dash-members').textContent = allRoster.length || '—';
+  loadDashActivity();
 }
 
-window.filterComps = function() { renderCompCards(); };
-
-window.deleteComp = async function(id) {
-  if (!confirm('Delete this comp?')) return;
-  await deleteDoc(doc(db, 'comps', id));
-  showToast('Comp deleted');
-};
-
-// ===== MAP PLANNER =====
-function initMapPlanner() {
-  const list = document.getElementById('map-planner-list');
-  MAPS.forEach(m => {
-    const btn = document.createElement('button');
-    btn.className = 'map-planner-btn';
-    btn.textContent = m;
-    btn.onclick = () => selectMapPlanner(m, btn);
-    list.appendChild(btn);
-  });
+async function loadDashActivity() {
+  try {
+    const q = query(collection(db, 'activity'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    const feed = document.getElementById('dash-activity');
+    const items = snap.docs.slice(0, 8);
+    if (!items.length) { feed.innerHTML = '<div class="empty-state">No activity yet.</div>'; return; }
+    feed.innerHTML = items.map(d => {
+      const a = d.data();
+      return `<div class="activity-item">
+        <span class="activity-user">${a.user}</span>
+        <span>${a.action}</span>
+        <span class="activity-time">${a.createdAt?.toDate ? timeAgo(a.createdAt.toDate()) : ''}</span>
+      </div>`;
+    }).join('');
+  } catch (e) {}
 }
 
-function selectMapPlanner(map, btn) {
-  activeMapPlanner = map;
-  document.querySelectorAll('.map-planner-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('map-view-title').textContent = map + ' — Blueprints';
-  document.getElementById('map-view-actions').style.display = 'flex';
-  document.getElementById('map-notes-bar').style.display = 'flex';
-  const container = document.getElementById('map-iframe-container');
-  container.innerHTML = `<iframe src="${META[map].siegegg}" title="${map} map blueprint from Siegegg.com" loading="lazy"></iframe>`;
-  loadMapNotes(map);
+// ===== ROSTER =====
+async function loadRoster() {
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    allRoster = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    document.getElementById('dash-members').textContent = allRoster.length || '—';
+    renderRoster();
+  } catch (e) {}
 }
 
-window.openSiegeGG = function() {
-  if (activeMapPlanner) window.open(META[activeMapPlanner].siegegg, '_blank');
-};
-
-window.openFloorSelect = function() {
-  showToast('Open on Siegegg.com to browse floors and sites directly');
-};
-
-window.saveMapNote = async function() {
-  const input = document.getElementById('map-note-input');
-  const text = input.value.trim();
-  if (!text || !activeMapPlanner) return;
-  await addDoc(collection(db, 'mapnotes'), {
-    map: activeMapPlanner,
-    text,
-    author: currentUser.displayName || currentUser.email,
-    authorId: currentUser.uid,
-    createdAt: serverTimestamp()
-  });
-  input.value = '';
-  showToast('Note saved', 'success');
-};
-
-async function loadMapNotes(map) {
-  const q = query(collection(db, 'mapnotes'), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  const notes = snap.docs.map(d => d.data()).filter(n => n.map === map);
-  const container = document.getElementById('map-notes-list');
-  if (!notes.length) {
-    container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No notes yet for this map.</div>';
-    return;
-  }
-  container.innerHTML = notes.map(n => `
-    <div class="map-note-item">
-      <span class="map-note-author">${n.author}</span>
-      <span>${n.text}</span>
-      <span class="map-note-time">${n.createdAt?.toDate ? timeAgo(n.createdAt.toDate()) : ''}</span>
+function renderRoster() {
+  const list = document.getElementById('roster-list');
+  if (!list) return;
+  if (!allRoster.length) { list.innerHTML = '<div class="empty-state">No members yet.</div>'; return; }
+  list.innerHTML = allRoster.map(m => `
+    <div class="roster-item">
+      <div class="user-avatar sm">${m.displayName?.slice(0,2).toUpperCase() || '?'}</div>
+      <div class="roster-item-name">${m.displayName}</div>
+      <div class="roster-item-email">${m.email}</div>
     </div>
   `).join('');
 }
 
-// ===== OPERATOR SELECTOR =====
-function buildOpSelector(selectorId, selectedArr, selectedDisplayId, max) {
-  const container = document.getElementById(selectorId);
-  const display = document.getElementById(selectedDisplayId);
-  container.innerHTML = '';
-  ALL_OPERATORS.forEach(op => {
-    const btn = document.createElement('button');
-    btn.className = 'op-btn' + (selectedArr.includes(op) ? ' selected' : '');
-    btn.textContent = op;
-    btn.onclick = () => toggleOp(op, selectedArr, max, selectorId, selectedDisplayId);
-    container.appendChild(btn);
-  });
-  renderSelectedOps(selectedArr, selectedDisplayId, selectorId, max);
-}
-
-function toggleOp(op, arr, max, selectorId, displayId) {
-  const idx = arr.indexOf(op);
-  if (idx > -1) {
-    arr.splice(idx, 1);
-  } else {
-    if (arr.length >= max) { showToast(`Max ${max} operators`); return; }
-    arr.push(op);
-  }
-  buildOpSelector(selectorId, arr, displayId, max);
-}
-
-function renderSelectedOps(arr, displayId, selectorId, max) {
-  const display = document.getElementById(displayId);
-  if (!arr.length) { display.innerHTML = ''; return; }
-  display.innerHTML = arr.map(op => `
-    <div class="selected-op-tag">
-      ${op}
-      <button onclick="toggleOp('${op}', ${displayId === 'selected-ops' ? 'selectedOps' : 'compSelectedOps'}, ${max}, '${selectorId}', '${displayId}')" aria-label="Remove ${op}">×</button>
-    </div>
-  `).join('');
-}
+// ===== PROFILE =====
+window.saveProfile = async function () {
+  const name = document.getElementById('profile-name').value.trim();
+  if (!name) return;
+  await updateProfile(currentUser, { displayName: name });
+  await updateDoc(doc(db, 'users', currentUser.uid), { displayName: name });
+  document.getElementById('user-name').textContent = name;
+  document.getElementById('user-avatar').textContent = name.slice(0,2).toUpperCase();
+  showToast('Profile saved', 'success');
+};
 
 // ===== ACTIVITY =====
 async function logActivity(action) {
-  await addDoc(collection(db, 'activity'), {
-    user: currentUser.displayName || currentUser.email,
-    action,
-    createdAt: serverTimestamp()
-  });
-}
-
-async function loadActivity() {
-  const q = query(collection(db, 'activity'), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  const feed = document.getElementById('activity-feed');
-  const items = snap.docs.slice(0, 10).map(d => d.data());
-  if (!items.length) { feed.innerHTML = '<div class="empty-state">No activity yet.</div>'; return; }
-  feed.innerHTML = items.map(a => `
-    <div class="activity-item">
-      <span class="activity-user">${a.user}</span>
-      <span>${a.action}</span>
-      <span class="activity-time">${a.createdAt?.toDate ? timeAgo(a.createdAt.toDate()) : ''}</span>
-    </div>
-  `).join('');
-}
-
-async function loadMemberCount() {
-  const snap = await getDocs(collection(db, 'users'));
-  document.getElementById('member-count').textContent = snap.size;
-  document.getElementById('online-count').textContent = snap.size + ' member' + (snap.size !== 1 ? 's' : '');
-  loadActivity();
+  try {
+    await addDoc(collection(db, 'activity'), {
+      user: currentUser.displayName || currentUser.email,
+      action,
+      createdAt: serverTimestamp()
+    });
+  } catch (e) {}
 }
 
 // ===== MODALS =====
-window.closeModal = function(id) {
+window.closeModal = function (id) {
   document.getElementById(id).style.display = 'none';
 };
 
@@ -919,9 +1032,9 @@ window.showToast = showToast;
 
 // ===== UTILS =====
 function timeAgo(date) {
-  const secs = Math.floor((new Date() - date) / 1000);
-  if (secs < 60) return 'just now';
-  if (secs < 3600) return Math.floor(secs/60) + 'm ago';
-  if (secs < 86400) return Math.floor(secs/3600) + 'h ago';
-  return Math.floor(secs/86400) + 'd ago';
+  const s = Math.floor((new Date() - date) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
 }

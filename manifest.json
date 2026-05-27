@@ -1,24 +1,13 @@
 {
   "name": "R6 Strat Board",
   "short_name": "R6 Strats",
-  "description": "Collaborative Rainbow Six Siege strategy tool for your team",
-  "start_url": "/",
+  "description": "Collaborative Rainbow Six Siege strategy tool",
+  "start_url": "/r6-strat-board/",
   "display": "standalone",
   "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
-  "orientation": "portrait-primary",
   "icons": [
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }

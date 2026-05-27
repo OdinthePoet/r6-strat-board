@@ -1,43 +1,38 @@
-# R6 Strat Board — Setup Guide
+# R6 Strat Board — Setup Guide (Full App)
 
 ## What you have
-A complete web app with:
+A complete collaborative web app with:
 - Individual accounts (email/password login)
-- Meta reference (pro picks per site, Y11S1)
-- Strat builder with real-time sync
-- Team comp planner
-- Map blueprint planner (via Siegegg.com)
-- Activity feed
+- Hierarchical strat system (map → side → folders → strats)
+- Operator role cards with setup notes per operator
+- Match logging with K/D/A and KOST tracking per player
+- Stats dashboard — win rates by map, strat, side; player KOST%
+- Team Hub — Meta reference, shared notes, per-map notes, ban planner
+- Interactive map planner — all 16 maps with SVG schematics, drag/drop operators and gadgets, arrow/line drawing tools, real-time team sync
+- Team roster (auto-populated from registered accounts)
 - PWA — installs to phone home screen
 
 ---
 
-## Step 1 — Create your Firebase project (5 minutes)
+## Step 1 — Firebase project setup
 
+### Create project
 1. Go to https://console.firebase.google.com
-2. Click **Add project**, name it `r6-strat-board`, click through the setup
-3. On the project dashboard, click the **web icon** `</>` to add a web app
-4. Name it anything (e.g. "r6-strat-board-web"), click **Register app**
-5. You'll see a `firebaseConfig` block. Copy it — you need it in Step 3.
+2. Click **Add project**, name it `r6-strat-board`
+3. Click through the setup wizard
 
----
-
-## Step 2 — Enable Firebase services
-
-Still in Firebase console:
-
-### Authentication
+### Enable Authentication
 1. Left sidebar → **Authentication** → **Get started**
 2. **Sign-in method** tab → **Email/Password** → Enable → Save
 
-### Firestore Database
+### Create Firestore Database
 1. Left sidebar → **Firestore Database** → **Create database**
-2. Choose **Start in test mode** (fine for personal use)
-3. Pick a location close to you (e.g. us-central1)
-4. Click **Enable**
+2. Choose **Start in test mode**
+3. Pick location: **nam5** (US multi-region) or closest to you
+4. Click **Enable** / **Create**
 
-### Firestore Security Rules (important)
-In Firestore → **Rules** tab, replace the content with:
+### Set Firestore Security Rules
+In Firestore → **Rules** tab, replace ALL content with:
 
 ```
 rules_version = '2';
@@ -50,19 +45,25 @@ service cloud.firestore {
 }
 ```
 
-Click **Publish**. This ensures only logged-in users can read/write data.
+Click **Publish**.
+
+### Get your Firebase config
+1. Go to **Project Overview** (top of left sidebar)
+2. Click the **web icon** `</>` to add a web app
+3. Name it anything, click **Register app**
+4. Copy the `firebaseConfig` object shown
 
 ---
 
-## Step 3 — Add your Firebase config to the app
+## Step 2 — Add Firebase config to the app
 
-Open `js/firebase-config.js` in any text editor (Notepad works).
+Open `js/firebase-config.js` in Notepad or any text editor.
 
-Replace the placeholder values with your actual config from Step 1:
+Replace the placeholder values with your real Firebase config:
 
 ```js
 const firebaseConfig = {
-  apiKey: "AIzaSy...",           // your actual key
+  apiKey: "AIzaSy...",
   authDomain: "r6-strat-board.firebaseapp.com",
   projectId: "r6-strat-board",
   storageBucket: "r6-strat-board.appspot.com",
@@ -75,80 +76,75 @@ Save the file.
 
 ---
 
-## Step 4 — Host it on GitHub Pages (free)
+## Step 3 — Upload to GitHub and enable GitHub Pages
 
-### Create a GitHub account
+### Create GitHub account
 Go to https://github.com and sign up (free).
 
-### Create a repository
+### Create repository
 1. Click **+** → **New repository**
-2. Name it `r6-strat-board` (or anything you like)
-3. Set it to **Public** (required for free GitHub Pages)
+2. Name it `r6-strat-board`
+3. Set to **Public**
 4. Click **Create repository**
 
-### Upload your files
+### Upload files
 1. On the repository page, click **uploading an existing file**
-2. Drag ALL the files and folders from your r6stratboard folder into the upload area:
+2. Drag ALL files and folders from the unzipped folder:
    - `index.html`
    - `manifest.json`
    - `css/` folder
-   - `js/` folder
+   - `js/` folder (contains `app.js`, `data.js`, `maps.js`, `mapplanner.js`, `firebase-config.js`)
 3. Click **Commit changes**
 
 ### Enable GitHub Pages
-1. Go to your repository **Settings** tab
+1. Repository **Settings** tab
 2. Left sidebar → **Pages**
-3. Under **Source**, select **Deploy from a branch**
+3. Source: **Deploy from a branch**
 4. Branch: **main**, folder: **/ (root)**
 5. Click **Save**
 
-After a minute or two, your app will be live at:
+Your app will be live at:
 `https://YOUR-USERNAME.github.io/r6-strat-board/`
 
 ---
 
-## Step 5 — Share with your team
+## Step 4 — Share with your team
 
-Send your friends that URL. They:
-1. Open it in their browser
-2. Click **Create Account** and register
-3. Start using the app immediately
+Send the URL to your teammates. They:
+1. Open it in browser
+2. Click **Create Account** and register with their callsign
+3. Start using immediately
 
-On mobile, they can tap **Share → Add to Home Screen** in Safari (iOS) or the browser menu (Android) to install it like an app.
-
----
-
-## Updating the app later
-
-When you want to add maps, fix something, or add features:
-1. Edit the files locally
-2. Go to your GitHub repository
-3. Click on the file you want to update → edit → commit
-4. GitHub Pages updates automatically within a minute
+On mobile: **Share → Add to Home Screen** (iOS Safari) or browser menu → **Add to Home Screen** (Android) to install as an app.
 
 ---
 
 ## Firebase free tier limits
 
-Firebase's free Spark plan includes:
-- 50,000 reads/day, 20,000 writes/day, 20,000 deletes/day
-- 1GB stored data
-- 10GB bandwidth/month
+The free Spark plan includes:
+- 50,000 reads/day, 20,000 writes/day
+- 1GB stored data, 10GB bandwidth/month
 
-For a team of up to 10 people using this app, you will never come close to these limits.
+A team of 10 people will never approach these limits.
 
 ---
 
 ## Troubleshooting
 
-**"Firebase: Error (auth/configuration-not-found)"**
-→ Your firebase-config.js still has the placeholder values. Re-check Step 3.
-
-**Blank page / app not loading**
-→ Open browser DevTools (F12) → Console tab. Share the error message.
+**Blank page / nothing loads**
+→ Open browser DevTools (F12) → Console. If you see a Firebase error, check your config values in `js/firebase-config.js`.
 
 **"Missing or insufficient permissions"**
-→ Firestore security rules weren't set. Re-do the Rules section in Step 2.
+→ Firestore security rules weren't set correctly. Re-do the Rules section in Step 1.
 
-**Friends can't log in / register**
-→ Make sure Email/Password auth is enabled in Firebase (Step 2).
+**Map planner not saving**
+→ You need to add `map_plans` as an allowed collection. The security rules above already cover it — just make sure they were published.
+
+**Friends can't log in**
+→ Make sure Email/Password auth is enabled in Firebase → Authentication → Sign-in method.
+
+---
+
+## How to update the app
+
+See `HOW-TO-UPDATE.md` for a full guide on adding maps, operators, updating meta data, and pushing changes to GitHub.
