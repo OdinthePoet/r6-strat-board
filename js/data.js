@@ -59,7 +59,7 @@ export const MAPS = {
     category: "ranked"
   },
   "Kafe Dostoyevsky": {
-    sites: ["Reading / Fire Bar","Mining / Armory","Kitchen / Storage","Basement / Tasting"],
+    sites: ["Reading / Fire Bar","Mining / Armory","Kitchen / Storage","Bar / Cocktail"],
     floors: ["Basement","Ground Floor","1st Floor","2nd Floor","3rd Floor"],
     category: "ranked"
   },
