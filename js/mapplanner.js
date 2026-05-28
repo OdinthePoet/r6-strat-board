@@ -50,7 +50,7 @@ const MAP_IMAGES = {
     { label: "Floor 3", file: "r6-maps-emeraldplains-blueprint-3.jpg" }
   ],
   "Kafe Dostoyevsky": [
-    { label: "Floor 1", file: "kafe_map_floor_1.webp" },
+    { label: "Floor 1", file: "kafe-first-floor.png" },
     { label: "Floor 2", file: "kafe_map_Map_floor_2.webp" },
     { label: "Floor 3", file: "kafe_map_Map_floor_3.webp" },
     { label: "Roof",    file: "kafe_map_Roof.webp" }
