@@ -257,7 +257,7 @@ function renderStratDetail(id) {
     <div class="op-role-grid">
       ${(s.operators||[]).map(op => {
         const iconKey = OP_ICON[op];
-        const iconUrl = iconKey ? (ICON_BASE + iconKey + '.svg') : null;
+        const iconUrl = iconKey ? (ICON_BASE + iconKey + '/' + iconKey + '.svg') : null;
         return `<div class="op-role-card">
           <div class="op-role-header">
             ${iconUrl ? `<img src="${iconUrl}" width="28" height="28" style="border-radius:50%;border:1px solid rgba(255,255,255,0.2)" onerror="this.style.display='none'">` : ''}
@@ -405,7 +405,7 @@ function buildStratCanvasPalettes(stratId, side) {
   if (opPal) {
     const btns = ops.map(op => {
       const iconKey = OP_ICON[op];
-      const iconUrl = iconKey ? (ICON_BASE + iconKey + '.svg') : null;
+      const iconUrl = iconKey ? (ICON_BASE + iconKey + '/' + iconKey + '.svg') : null;
       const safeName = op.replace(/'/g, "\\'");
       return `<button class="planner-op-btn" onclick="stratCanvasSelectOp('${stratId}','${safeName}');buildStratCanvasPalettes_global('${stratId}','${side}')" title="${op}" style="display:flex;align-items:center;gap:2px;padding:2px 5px">${iconUrl ? `<img src="${iconUrl}" width="14" height="14" style="border-radius:50%;vertical-align:middle;flex-shrink:0" onerror="this.style.display='none'">` : ''}<span>${op.length>7?op.slice(0,7)+'\u2026':op}</span></button>`;
     }).join('');
@@ -900,7 +900,7 @@ window.renderMeta = function() {
   const d = META[map][site_key];
   const opCard = (op, side) => {
     const iconKey = OP_ICON[op.name];
-    const iconUrl = iconKey ? (ICON_BASE + iconKey + '.svg') : null;
+    const iconUrl = iconKey ? (ICON_BASE + iconKey + '/' + iconKey + '.svg') : null;
     return `<div class="meta-op-card">
       <div class="meta-op-name" style="display:flex;align-items:center;gap:6px">
         ${iconUrl ? `<img src="${iconUrl}" width="22" height="22" style="border-radius:50%;border:1px solid rgba(255,255,255,0.15)" onerror="this.style.display='none'">` : ''}

@@ -3,35 +3,38 @@
 // Full operator roster, all maps, all sites, meta data
 // ============================================================
 
-// Operator icon base URL (MIT licensed community resource)
-export const ICON_BASE = 'https://raw.githubusercontent.com/marcopixel/r6operators/master/icons/';
+// Operator icon base URL — pattern: ICON_BASE + iconKey + '/' + iconKey + '.svg'
+export const ICON_BASE = 'https://raw.githubusercontent.com/marcopixel/r6operators/master/operators/';
 
 // Maps operator display name to icon filename
+// Icon repo has icons for established ops; newer ops (Rauora, Deimos, Denari, Skopós,
+// Solid Snake, Striker, Sentry) fall back to initials automatically via onerror handler.
 export const OP_ICON = {
   // Attackers
   "Ace": "ace", "Amaru": "amaru", "Ash": "ash", "Blackbeard": "blackbeard",
   "Blitz": "blitz", "Brava": "brava", "Buck": "buck", "Capitão": "capitao",
-  "Deimos": "deimos", "Dokkaebi": "dokkaebi", "Finka": "finka", "Flores": "flores",
+  "Deimos": null, "Dokkaebi": "dokkaebi", "Finka": "finka", "Flores": "flores",
   "Fuze": "fuze", "Glaz": "glaz", "Gridlock": "gridlock", "Grim": "grim",
   "Hibana": "hibana", "Iana": "iana", "IQ": "iq", "Jackal": "jackal",
   "Kali": "kali", "Lion": "lion", "Maverick": "maverick", "Montagne": "montagne",
   "Nøkk": "nokk", "Nomad": "nomad", "Osa": "osa", "Ram": "ram",
-  "Rauora": "rauora", "Sens": "sens", "Sledge": "sledge", "Solid Snake": "solidsnake",
-  "Striker": "striker", "Thatcher": "thatcher", "Thermite": "thermite",
+  "Rauora": null, "Sens": "sens", "Sledge": "sledge", "Solid Snake": null,
+  "Striker": null, "Thatcher": "thatcher", "Thermite": "thermite",
   "Twitch": "twitch", "Ying": "ying", "Zero": "zero", "Zofia": "zofia",
   // Defenders
   "Alibi": "alibi", "Aruni": "aruni", "Azami": "azami", "Bandit": "bandit",
-  "Castle": "castle", "Caveira": "caveira", "Clash": "clash", "Denari": "denari",
+  "Castle": "castle", "Caveira": "caveira", "Clash": "clash", "Denari": null,
   "Doc": "doc", "Echo": "echo", "Ela": "ela", "Fenrir": "fenrir",
   "Frost": "frost", "Goyo": "goyo", "Jäger": "jager", "Kaid": "kaid",
   "Kapkan": "kapkan", "Lesion": "lesion", "Maestro": "maestro", "Melusi": "melusi",
   "Mira": "mira", "Mozzie": "mozzie", "Mute": "mute", "Oryx": "oryx",
-  "Pulse": "pulse", "Rook": "rook", "Sentry": "sentry", "Skopós": "skopos",
+  "Pulse": "pulse", "Rook": "rook", "Sentry": null, "Skopós": null,
   "Smoke": "smoke", "Solis": "solis", "Tachanka": "tachanka", "Thorn": "thorn",
-  "Thunder": "thunder", "Thunderbird": "thunderbird", "Tubarão": "tubarao",
-  "Valkyrie": "valkyrie", "Vigil": "vigil", "Wamai": "wamai", "Warden": "warden"
+  "Thunderbird": "thunderbird", "Tubarão": "tubarao",
+  "Valkyrie": "valkyrie", "Wamai": "wamai", "Warden": "warden"
 };
 
+// ── Exact rosters from the game (alphabetical within each side) ──────────────
 export const ATTACK_OPERATORS = [
   "Ace","Amaru","Ash","Blackbeard","Blitz","Brava","Buck","Capitão",
   "Deimos","Dokkaebi","Finka","Flores","Fuze","Glaz","Gridlock","Grim",
@@ -45,7 +48,7 @@ export const DEFENSE_OPERATORS = [
   "Doc","Echo","Ela","Fenrir","Frost","Goyo","Jäger","Kaid",
   "Kapkan","Lesion","Maestro","Melusi","Mira","Mozzie","Mute","Oryx",
   "Pulse","Rook","Sentry","Skopós","Smoke","Solis","Tachanka","Thorn",
-  "Thunder","Thunderbird","Tubarão","Valkyrie","Vigil","Wamai","Warden"
+  "Thunderbird","Tubarão","Valkyrie","Wamai","Warden"
 ];
 
 // All ranked maps with all bomb sites

@@ -224,13 +224,27 @@ export class MapCanvas {
     this.canvas.addEventListener('touchmove',  e => { e.preventDefault(); this._onMove(e); }, { passive: false });
     this.canvas.addEventListener('touchend',   e => this._onUp(e));
 
-    // Zoom with scroll wheel — use CSS transform so icons scale too
+    // After any zoom change: apply CSS transform AND expand the scroll container
+    // so the scaled content isn't clipped (CSS transform doesn't affect layout flow)
+    const applyZoom = () => {
+      this.wrapper.style.transform = `scale(${this.zoom})`;
+      const scaledW = Math.round(this.canvas.width  * this.zoom);
+      const scaledH = Math.round(this.canvas.height * this.zoom);
+      // Push scrollWrap to accommodate scaled size
+      this.wrapper.style.marginRight  = (scaledW - this.canvas.width)  + 'px';
+      this.wrapper.style.marginBottom = (scaledH - this.canvas.height) + 'px';
+      scrollWrap.style.minHeight = scaledH + 'px';
+    };
+    // Store reference so _fitCanvas can call it after image loads
+    this._applyZoom = applyZoom;
+
+    // Zoom with scroll wheel
     scrollWrap.addEventListener('wheel', e => {
       if (!e.ctrlKey && Math.abs(e.deltaY) < 50) return; // only zoom on ctrl+wheel or large delta
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 0.9;
       this.zoom = Math.max(0.5, Math.min(4, this.zoom * factor));
-      this.wrapper.style.transform = `scale(${this.zoom})`;
+      applyZoom();
     }, { passive: false });
 
     // Pinch zoom on touch
@@ -243,19 +257,19 @@ export class MapCanvas {
         const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         if (lastDist > 0) {
           this.zoom = Math.max(0.5, Math.min(4, this.zoom * (dist / lastDist)));
-          this.wrapper.style.transform = `scale(${this.zoom})`;
+          applyZoom();
         }
         lastDist = dist;
       }
     }, { passive: true });
 
-    // Zoom buttons
+    // Zoom buttons — attach immediately (buttons already exist in DOM when init() runs)
     const zoomIn = document.getElementById(this.containerId + '-zoomin');
     const zoomOut = document.getElementById(this.containerId + '-zoomout');
     const zoomReset = document.getElementById(this.containerId + '-zoomreset');
-    if (zoomIn) zoomIn.onclick = () => { this.zoom = Math.min(4, this.zoom * 1.2); this.wrapper.style.transform = `scale(${this.zoom})`; };
-    if (zoomOut) zoomOut.onclick = () => { this.zoom = Math.max(0.5, this.zoom * 0.85); this.wrapper.style.transform = `scale(${this.zoom})`; };
-    if (zoomReset) zoomReset.onclick = () => { this.zoom = 1; this.wrapper.style.transform = 'scale(1)'; };
+    if (zoomIn)    zoomIn.onclick    = () => { this.zoom = Math.min(4, this.zoom * 1.2);   applyZoom(); };
+    if (zoomOut)   zoomOut.onclick   = () => { this.zoom = Math.max(0.5, this.zoom * 0.85); applyZoom(); };
+    if (zoomReset) zoomReset.onclick = () => { this.zoom = 1; applyZoom(); };
   }
 
   _onDown(e) {
@@ -403,7 +417,7 @@ export class MapCanvas {
 
       if (item.type === 'operator') {
         const iconKey = OP_ICON[item.label];
-        const iconUrl = iconKey ? (ICON_BASE + iconKey + '.svg') : null;
+        const iconUrl = iconKey ? (ICON_BASE + iconKey + '/' + iconKey + '.svg') : null;
         const borderColor = isSelected ? '#fff' : (item.side === 'attack' ? '#4a9eff' : '#e8b84b');
         const bgColor = item.side === 'attack' ? '#1a3a5a' : '#2a1a0a';
         const size = 36;
@@ -482,6 +496,8 @@ export class MapCanvas {
     this.canvas.height = Math.round(imgH * scale);
     this.displayW = this.canvas.width;
     this.displayH = this.canvas.height;
+    // Re-apply zoom margins after canvas resize
+    if (this._applyZoom) this._applyZoom();
   }
 
   // SAVE / LOAD
@@ -613,7 +629,7 @@ function buildBrainstormPalettes(side) {
       <div style="display:flex;flex-wrap:wrap;gap:3px">
         ${ops.map(op => {
           const iconKey = OP_ICON[op];
-          const iconUrl = iconKey ? (ICON_BASE + iconKey + '.svg') : null;
+          const iconUrl = iconKey ? (ICON_BASE + iconKey + '/' + iconKey + '.svg') : null;
           return `<button class="planner-op-btn" onclick="bsSelectOp('${op.replace(/'/g,"\\'")}');buildBSPalettes('${side}')" title="${op}" style="display:flex;align-items:center;gap:3px;padding:3px 6px">
             ${iconUrl ? `<img src="${iconUrl}" width="16" height="16" style="border-radius:50%;vertical-align:middle" onerror="this.style.display='none'">` : ''}
             ${op.length > 7 ? op.slice(0,7)+'…' : op}
