@@ -5,18 +5,18 @@
 // ============================================================
 
 export const ATTACK_OPERATORS = [
-  "Ace","Ash","Blackbeard","Blitz","Brava","Buck","Capitão","Deimos",
+  "Ace","Amaru","Ash","Blackbeard","Blitz","Brava","Buck","Capitão","Deimos",
   "Dokkaebi","Finka","Flores","Fuze","Glaz","Gridlock","Grim","Hibana",
-  "Iana","IQ","Jackal","Lion","Maverick","Montagne","Nøkk","Nomad",
-  "Osa","Ram","Sens","Sledge","Solid Snake","Thatcher","Thermite",
+  "Iana","IQ","Jackal","Kali","Lion","Maverick","Montagne","Nøkk","Nomad",
+  "Osa","Ram","Rauora","Sens","Sledge","Solid Snake","Striker","Thatcher","Thermite",
   "Twitch","Ying","Zero","Zofia"
 ];
 
 export const DEFENSE_OPERATORS = [
-  "Aruni","Azami","Bandit","Caveira","Clash","Doc","Echo","Ela",
-  "Fenrir","Frost","Jäger","Kaid","Kapkan","Lesion","Maestro","Melusi",
-  "Mira","Mozzie","Mute","Oryx","Pulse","Rook","Solis","Smoke",
-  "Thorn","Thunder","Valkyrie","Vigil","Wamai","Warden"
+  "Alibi","Aruni","Azami","Bandit","Castle","Caveira","Clash","Denari","Doc","Echo","Ela",
+  "Fenrir","Frost","Goyo","Jäger","Kaid","Kapkan","Lesion","Maestro","Melusi",
+  "Mira","Mozzie","Mute","Oryx","Pulse","Rook","Sentry","Skopós","Smoke","Solis","Tachanka",
+  "Thorn","Thunderbird","Tubarão","Valkyrie","Vigil","Wamai","Warden"
 ];
 
 export const ALL_OPERATORS = [...new Set([...ATTACK_OPERATORS, ...DEFENSE_OPERATORS])].sort();
@@ -59,9 +59,9 @@ export const MAPS = {
     category: "ranked"
   },
   "Kafe Dostoyevsky": {
-    sites: ["Reading / Fire Bar","Mining / Armory","Kitchen / Storage","Bar / Cocktail"],
-    floors: ["Basement","Ground Floor","1st Floor","2nd Floor","3rd Floor"],
-    category: "ranked"
+    sites: ["Reading / Dining","Mining / Dining","Kitchen / Service","Bar / Cocktail"],
+    floors: ["Ground Floor","1st Floor","2nd Floor","Roof"],
+    category: "pro"
   },
   "Kanal": {
     sites: ["Server / Security","Coast Guard / Map","Radar / Drone","Armory / Kitchen"],
