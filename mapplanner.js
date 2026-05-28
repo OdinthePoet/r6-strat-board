@@ -1,13 +1,14 @@
 // ============================================================
-// MAP PLANNER v3 — Real images, operator icons, gadget icons
-// Works standalone (Strat Brainstorm) and embedded in strats
+// MAP PLANNER v5
+// - Unified image-coordinate system (fixes placement)
+// - HTML overlay for operator icons (fixes CORS icon issue)
+// - Proper zoom via CSS transform (fixes zoom)
 // ============================================================
 
 import { ATTACK_OPERATORS, DEFENSE_OPERATORS, GADGETS, ICON_BASE, OP_ICON } from './data.js';
 import { db } from './firebase-config.js';
 import { doc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// Image filename map
 const MAP_IMAGES = {
   "Bank": [
     { label: "Floor 1", file: "r6-maps-bank-blueprint-1.jpg" },
@@ -23,8 +24,8 @@ const MAP_IMAGES = {
   "Chalet": [
     { label: "1st Floor", file: "chalet_rework_1f.webp" },
     { label: "2nd Floor", file: "chalet_rework_2f.webp" },
-    { label: "Basement", file: "chalet_rework_basement.webp" },
-    { label: "Roof", file: "chalet_rework_roof.webp" }
+    { label: "Basement",  file: "chalet_rework_basement.webp" },
+    { label: "Roof",      file: "chalet_rework_roof.webp" }
   ],
   "Clubhouse": [
     { label: "Floor 1", file: "r6-maps-clubhouse-blueprint-1.jpg" },
@@ -52,7 +53,7 @@ const MAP_IMAGES = {
     { label: "Floor 1", file: "kafe_map_floor_1.webp" },
     { label: "Floor 2", file: "kafe_map_Map_floor_2.webp" },
     { label: "Floor 3", file: "kafe_map_Map_floor_3.webp" },
-    { label: "Roof", file: "kafe_map_Roof.webp" }
+    { label: "Roof",    file: "kafe_map_Roof.webp" }
   ],
   "Kanal": [
     { label: "Floor 1", file: "r6-maps-kanal-blueprint-1.jpg" },
@@ -104,204 +105,191 @@ const MAP_IMAGES = {
   ]
 };
 
-// Shared icon image cache across all instances
 const imgCache = {};
 
 // ============================================================
-// CANVAS CLASS — one instance per canvas (standalone or strat)
+// MapCanvas
+// Architecture:
+//   - A <div> wrapper (scrollable, zoomable via CSS transform)
+//   - A <canvas> for background image + drawings (lines/arrows)
+//   - An <div#overlay> for operator and gadget HTML icons
+//
+// All positions stored as percentages (0-100) of image dimensions
+// so they are resolution-independent and zoom-safe.
 // ============================================================
 export class MapCanvas {
   constructor(containerId, saveKey, options = {}) {
     this.containerId = containerId;
     this.saveKey = saveKey;
-    this.options = options; // { map, floorIndex, side, user, onSave }
+    this.options = options;
     this.map = options.map || null;
     this.floorIndex = options.floorIndex || 0;
     this.side = options.side || 'defense';
     this.tool = 'select';
     this.selectedOp = null;
     this.selectedGadget = null;
-    this.items = [];
-    this.drawings = [];
+    this.items = [];      // {id, type, label, symbol, color, side, px, py} px/py = 0-100%
+    this.drawings = [];   // {id, type, x1,y1,x2,y2 in 0-100%, color}
     this.selectedId = null;
     this.isDragging = false;
     this.isDrawing = false;
-    this.drawStart = null;
     this.currentDraw = null;
-    this.dragOffX = 0;
-    this.dragOffY = 0;
+    this.dragOffPx = 0;
+    this.dragOffPy = 0;
+    this.zoom = 1.0;
+    this.wrapper = null;
     this.canvas = null;
     this.ctx = null;
-    this.currentImg = null;
+    this.overlay = null;
+    this.img = null;
+    this.displayW = 0;
+    this.displayH = 0;
     this.saveTimer = null;
-    this.opIconCache = {};
   }
 
   init() {
     const container = document.getElementById(this.containerId);
     if (!container) return;
-    container.innerHTML = `<canvas style="display:block;max-width:100%;border-radius:8px;cursor:crosshair;background:#111"></canvas>`;
-    this.canvas = container.querySelector('canvas');
+    container.innerHTML = '';
+
+    // Scroll container
+    const scrollWrap = document.createElement('div');
+    scrollWrap.style.cssText = 'overflow:auto;width:100%;background:#0d0d0d;border-radius:8px;position:relative';
+    scrollWrap.id = this.containerId + '-scroll';
+
+    // Inner wrapper (transform origin for zoom)
+    this.wrapper = document.createElement('div');
+    this.wrapper.style.cssText = 'position:relative;display:inline-block;transform-origin:top left';
+
+    // Canvas for image + drawings
+    this.canvas = document.createElement('canvas');
+    this.canvas.style.cssText = 'display:block;cursor:crosshair';
+
+    // HTML overlay for icons
+    this.overlay = document.createElement('div');
+    this.overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none';
+
+    this.wrapper.appendChild(this.canvas);
+    this.wrapper.appendChild(this.overlay);
+    scrollWrap.appendChild(this.wrapper);
+    container.appendChild(scrollWrap);
+
     this.ctx = this.canvas.getContext('2d');
-    this._attachEvents();
-    if (this.map) this.loadMap(this.map, this.floorIndex);
+    this._attachEvents(scrollWrap);
+    if (this.map) this._loadImage();
   }
 
-  loadMap(map, floorIndex = 0) {
-    this.map = map;
-    this.floorIndex = floorIndex;
-    this._loadImage();
-  }
-
-  setFloor(index) {
-    this.floorIndex = index;
-    this.items = [];
-    this.drawings = [];
+  // PUBLIC API
+  setFloor(i) {
+    this.floorIndex = i; this.items = []; this.drawings = []; this.selectedId = null;
     this._loadImage(() => this._loadState());
   }
-
-  setSide(side) {
-    this.side = side;
+  setSide(s) { this.side = s; }
+  setTool(t) {
+    this.tool = t;
+    if (this.canvas) this.canvas.style.cursor = t === 'select' ? 'default' : t === 'eraser' ? 'cell' : 'crosshair';
   }
-
-  setTool(tool) {
-    this.tool = tool;
-    if (this.canvas) {
-      this.canvas.style.cursor = tool === 'select' ? 'default' : tool === 'eraser' ? 'cell' : 'crosshair';
-    }
-  }
-
   setOperator(op) { this.selectedOp = op; }
-  setGadget(gadget) { this.selectedGadget = gadget; }
-
-  clear() {
-    this.items = [];
-    this.drawings = [];
-    this.selectedId = null;
-    this._render();
-    this._scheduleSave();
-  }
-
-  getData() {
-    return { items: this.items, drawings: this.drawings };
-  }
-
-  setData(data) {
-    this.items = data.items || [];
-    this.drawings = data.drawings || [];
-    this._render();
-  }
-
+  setGadget(g) { this.selectedGadget = g; }
+  clear() { this.items = []; this.drawings = []; this.selectedId = null; this._render(); this._scheduleSave(); }
+  getData() { return { items: this.items, drawings: this.drawings }; }
+  setData(d) { this.items = d.items || []; this.drawings = d.drawings || []; this._render(); }
   async loadState() { await this._loadState(); }
   async saveState() { await this._saveState(); }
 
-  // ===== PRIVATE =====
-
-  _getFloorFiles() {
-    return MAP_IMAGES[this.map] || [];
-  }
-
-  _loadImage(cb) {
-    const floors = this._getFloorFiles();
-    const floor = floors[this.floorIndex];
-    if (!floor) { this._render(); if (cb) cb(); return; }
-    const src = './' + floor.file;
-    if (imgCache[src]) {
-      this.currentImg = imgCache[src];
-      this._resizeCanvas();
-      this._render();
-      if (cb) cb();
-      return;
-    }
-    const img = new Image();
-    img.onload = () => {
-      imgCache[src] = img;
-      this.currentImg = img;
-      this._resizeCanvas();
-      this._render();
-      if (cb) cb();
-    };
-    img.onerror = () => {
-      this.currentImg = null;
-      this._render();
-      if (cb) cb();
-    };
-    img.src = src;
-  }
-
-  _resizeCanvas() {
-    if (!this.canvas || !this.currentImg) return;
-    const container = document.getElementById(this.containerId);
-    const maxW = container ? Math.max(container.clientWidth - 8, 300) : 900;
-    const scale = Math.min(1, maxW / this.currentImg.naturalWidth);
-    this.canvas.width = Math.round(this.currentImg.naturalWidth * scale);
-    this.canvas.height = Math.round(this.currentImg.naturalHeight * scale);
-    this._scale = scale;
-    // Store natural dimensions for coord mapping
-    this._imgW = this.currentImg.naturalWidth;
-    this._imgH = this.currentImg.naturalHeight;
-  }
-
-  _pt(e) {
+  // COORDINATE HELPERS
+  // Event -> percentage coords (0-100)
+  _evtToPct(e) {
     const rect = this.canvas.getBoundingClientRect();
     const cx = e.touches ? e.touches[0].clientX : e.clientX;
     const cy = e.touches ? e.touches[0].clientY : e.clientY;
-    const imgW = this.currentImg ? this.currentImg.naturalWidth : this.canvas.width;
-    const imgH = this.currentImg ? this.currentImg.naturalHeight : this.canvas.height;
     return {
-      x: ((cx - rect.left) / rect.width) * imgW,
-      y: ((cy - rect.top) / rect.height) * imgH
+      px: ((cx - rect.left) / rect.width) * 100,
+      py: ((cy - rect.top) / rect.height) * 100
     };
   }
 
-  _attachEvents() {
+  // Percentage -> canvas pixels
+  _pctToPx(px, py) {
+    return { x: (px / 100) * this.canvas.width, y: (py / 100) * this.canvas.height };
+  }
+
+  // EVENTS
+  _attachEvents(scrollWrap) {
     this.canvas.addEventListener('mousedown', e => this._onDown(e));
     this.canvas.addEventListener('mousemove', e => this._onMove(e));
-    this.canvas.addEventListener('mouseup', e => this._onUp(e));
-    this.canvas.addEventListener('click', e => this._onClick(e));
+    this.canvas.addEventListener('mouseup',   e => this._onUp(e));
+    this.canvas.addEventListener('click',     e => this._onClick(e));
     this.canvas.addEventListener('touchstart', e => { e.preventDefault(); this._onDown(e); }, { passive: false });
-    this.canvas.addEventListener('touchmove', e => { e.preventDefault(); this._onMove(e); }, { passive: false });
-    this.canvas.addEventListener('touchend', e => this._onUp(e));
-    // Scroll to zoom
-    this.canvas.addEventListener('wheel', e => {
+    this.canvas.addEventListener('touchmove',  e => { e.preventDefault(); this._onMove(e); }, { passive: false });
+    this.canvas.addEventListener('touchend',   e => this._onUp(e));
+
+    // Zoom with scroll wheel — use CSS transform so icons scale too
+    scrollWrap.addEventListener('wheel', e => {
+      if (!e.ctrlKey && Math.abs(e.deltaY) < 50) return; // only zoom on ctrl+wheel or large delta
       e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newW = Math.max(300, Math.min(this.canvas.width * delta, (this._imgW || this.canvas.width) * 2));
-      const newH = Math.round(newW * ((this._imgH || this.canvas.height) / (this._imgW || this.canvas.width)));
-      this.canvas.width = Math.round(newW);
-      this.canvas.height = newH;
-      this._render();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      this.zoom = Math.max(0.5, Math.min(4, this.zoom * factor));
+      this.wrapper.style.transform = `scale(${this.zoom})`;
     }, { passive: false });
+
+    // Pinch zoom on touch
+    let lastDist = 0;
+    scrollWrap.addEventListener('touchstart', e => {
+      if (e.touches.length === 2) lastDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    }, { passive: true });
+    scrollWrap.addEventListener('touchmove', e => {
+      if (e.touches.length === 2) {
+        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        if (lastDist > 0) {
+          this.zoom = Math.max(0.5, Math.min(4, this.zoom * (dist / lastDist)));
+          this.wrapper.style.transform = `scale(${this.zoom})`;
+        }
+        lastDist = dist;
+      }
+    }, { passive: true });
+
+    // Zoom buttons
+    const zoomIn = document.getElementById(this.containerId + '-zoomin');
+    const zoomOut = document.getElementById(this.containerId + '-zoomout');
+    const zoomReset = document.getElementById(this.containerId + '-zoomreset');
+    if (zoomIn) zoomIn.onclick = () => { this.zoom = Math.min(4, this.zoom * 1.2); this.wrapper.style.transform = `scale(${this.zoom})`; };
+    if (zoomOut) zoomOut.onclick = () => { this.zoom = Math.max(0.5, this.zoom * 0.85); this.wrapper.style.transform = `scale(${this.zoom})`; };
+    if (zoomReset) zoomReset.onclick = () => { this.zoom = 1; this.wrapper.style.transform = 'scale(1)'; };
   }
 
   _onDown(e) {
-    const pt = this._pt(e);
+    const pt = this._evtToPct(e);
     if (this.tool === 'arrow' || this.tool === 'line') {
       this.isDrawing = true;
-      this.drawStart = pt;
-      this.currentDraw = { type: this.tool, x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y,
-        color: this.side === 'attack' ? '#4a9eff' : '#e8b84b', id: Date.now() };
+      this.currentDraw = { id: Date.now(), type: this.tool,
+        x1: pt.px, y1: pt.py, x2: pt.px, y2: pt.py,
+        color: this.side === 'attack' ? '#4a9eff' : '#e8b84b' };
     } else if (this.tool === 'select') {
       const hit = this._hitTest(pt);
       if (hit) {
         this.selectedId = hit.id;
         this.isDragging = true;
-        this.dragOffX = pt.x - hit.x;
-        this.dragOffY = pt.y - hit.y;
+        this.dragOffPx = pt.px - hit.px;
+        this.dragOffPy = pt.py - hit.py;
+        this.canvas.style.cursor = 'grabbing';
       } else { this.selectedId = null; }
-      this._render();
+      this._renderOverlay();
     }
   }
 
   _onMove(e) {
-    const pt = this._pt(e);
+    const pt = this._evtToPct(e);
     if (this.isDrawing && this.currentDraw) {
-      this.currentDraw.x2 = pt.x; this.currentDraw.y2 = pt.y;
-      this._render();
-      this._drawLinePreview(this.currentDraw);
+      this.currentDraw.x2 = pt.px; this.currentDraw.y2 = pt.py;
+      this._renderCanvas();
     } else if (this.isDragging && this.selectedId) {
       const item = this.items.find(i => i.id === this.selectedId);
-      if (item) { item.x = pt.x - this.dragOffX; item.y = pt.y - this.dragOffY; this._render(); }
+      if (item) {
+        item.px = Math.max(0, Math.min(100, pt.px - this.dragOffPx));
+        item.py = Math.max(0, Math.min(100, pt.py - this.dragOffPy));
+        this._renderOverlay();
+      }
     }
   }
 
@@ -309,188 +297,194 @@ export class MapCanvas {
     if (this.isDrawing && this.currentDraw) {
       const dx = this.currentDraw.x2 - this.currentDraw.x1;
       const dy = this.currentDraw.y2 - this.currentDraw.y1;
-      if (Math.hypot(dx, dy) > 8) { this.drawings.push({ ...this.currentDraw }); this._scheduleSave(); }
-      this._render();
+      if (Math.hypot(dx, dy) > 1) {
+        this.drawings.push({ ...this.currentDraw }); this._scheduleSave();
+      }
+      this.currentDraw = null;
+      this._renderCanvas();
     }
-    if (this.isDragging) this._scheduleSave();
-    this.isDrawing = false; this.isDragging = false; this.currentDraw = null;
+    if (this.isDragging) { this._scheduleSave(); this.canvas.style.cursor = 'default'; }
+    this.isDrawing = false; this.isDragging = false;
   }
 
   _onClick(e) {
     if (this.isDragging) return;
-    const pt = this._pt(e);
+    const pt = this._evtToPct(e);
     if (this.tool === 'operator' && this.selectedOp) {
       this.items.push({ id: Date.now(), type: 'operator', label: this.selectedOp,
-        x: pt.x - 20, y: pt.y - 20, r: 20, side: this.side });
-      this._render(); this._scheduleSave();
+        px: pt.px, py: pt.py, side: this.side });
+      this._renderOverlay(); this._scheduleSave();
     } else if (this.tool === 'gadget' && this.selectedGadget) {
       this.items.push({ id: Date.now(), type: 'gadget', label: this.selectedGadget.label,
-        symbol: this.selectedGadget.symbol, x: pt.x - 14, y: pt.y - 14, r: 14,
-        color: this.selectedGadget.color, side: this.side });
-      this._render(); this._scheduleSave();
+        symbol: this.selectedGadget.symbol, color: this.selectedGadget.color,
+        px: pt.px, py: pt.py, side: this.side });
+      this._renderOverlay(); this._scheduleSave();
     } else if (this.tool === 'eraser') {
       const hit = this._hitTest(pt);
       if (hit) { this.items = this.items.filter(i => i.id !== hit.id); }
-      else { this.drawings = this.drawings.filter(d => this._ptLineDist(pt, d) > 12); }
-      this._render(); this._scheduleSave();
+      else {
+        this.drawings = this.drawings.filter(d => {
+          const mid = { px: (d.x1+d.x2)/2, py: (d.y1+d.y2)/2 };
+          return Math.hypot(pt.px - mid.px, pt.py - mid.py) > 3;
+        });
+      }
+      this._renderOverlay(); this._renderCanvas(); this._scheduleSave();
     }
   }
 
   _hitTest(pt) {
-    return [...this.items].reverse().find(item => {
-      const r = (item.r || 18) + 4;
-      return Math.hypot(pt.x - (item.x + (item.r||18)), pt.y - (item.y + (item.r||18))) <= r;
-    });
+    return [...this.items].reverse().find(item =>
+      Math.hypot(pt.px - item.px, pt.py - item.py) < 4);
   }
 
-  _ptLineDist(pt, d) {
-    const dx = d.x2 - d.x1, dy = d.y2 - d.y1;
-    const len2 = dx*dx + dy*dy;
-    if (!len2) return Math.hypot(pt.x - d.x1, pt.y - d.y1);
-    const t = Math.max(0, Math.min(1, ((pt.x-d.x1)*dx + (pt.y-d.y1)*dy) / len2));
-    return Math.hypot(pt.x - (d.x1 + t*dx), pt.y - (d.y1 + t*dy));
-  }
+  // RENDERING
+  _render() { this._renderCanvas(); this._renderOverlay(); }
 
-  _render() {
+  _renderCanvas() {
     if (!this.ctx || !this.canvas) return;
     const W = this.canvas.width, H = this.canvas.height;
-    const imgW = this.currentImg ? this.currentImg.naturalWidth : W;
-    const imgH = this.currentImg ? this.currentImg.naturalHeight : H;
-    // Scale factor: image coords -> canvas pixels
-    const sx = W / imgW;
-    const sy = H / imgH;
     this.ctx.clearRect(0, 0, W, H);
-    if (this.currentImg) {
-      this.ctx.drawImage(this.currentImg, 0, 0, W, H);
-      this.ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    if (this.img) {
+      this.ctx.drawImage(this.img, 0, 0, W, H);
+      this.ctx.fillStyle = 'rgba(0,0,0,0.08)';
       this.ctx.fillRect(0, 0, W, H);
     } else {
       this.ctx.fillStyle = '#111'; this.ctx.fillRect(0, 0, W, H);
-      this.ctx.fillStyle = '#444'; this.ctx.font = '14px Barlow,sans-serif';
+      this.ctx.fillStyle = '#555'; this.ctx.font = '16px Barlow,sans-serif';
       this.ctx.textAlign = 'center';
       this.ctx.fillText(this.map ? 'Loading ' + this.map + '...' : 'Select a map', W/2, H/2);
     }
-    // Draw in image coordinate space scaled to canvas
-    this.ctx.save();
-    this.ctx.scale(sx, sy);
     this.drawings.forEach(d => this._drawLine(d));
-    this.items.forEach(item => this._drawItem(item));
-    this.ctx.restore();
+    if (this.currentDraw) this._drawLine({ ...this.currentDraw, dashed: true });
   }
 
   _drawLine(d) {
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.strokeStyle = d.color; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(d.x1, d.y1); ctx.lineTo(d.x2, d.y2); ctx.stroke();
+    const p1 = this._pctToPx(d.x1, d.y1);
+    const p2 = this._pctToPx(d.x2, d.y2);
+    const lw = Math.max(2, this.canvas.width * 0.003);
+    this.ctx.save();
+    this.ctx.strokeStyle = d.color;
+    this.ctx.lineWidth = lw;
+    this.ctx.lineCap = 'round';
+    if (d.dashed) this.ctx.setLineDash([8, 4]);
+    this.ctx.beginPath(); this.ctx.moveTo(p1.x, p1.y); this.ctx.lineTo(p2.x, p2.y); this.ctx.stroke();
+    this.ctx.setLineDash([]);
     if (d.type === 'arrow') {
-      const angle = Math.atan2(d.y2-d.y1, d.x2-d.x1);
-      ctx.fillStyle = d.color;
-      ctx.beginPath();
-      ctx.moveTo(d.x2, d.y2);
-      ctx.lineTo(d.x2 - 13*Math.cos(angle-0.4), d.y2 - 13*Math.sin(angle-0.4));
-      ctx.lineTo(d.x2 - 13*Math.cos(angle+0.4), d.y2 - 13*Math.sin(angle+0.4));
-      ctx.closePath(); ctx.fill();
+      const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+      const al = Math.max(10, this.canvas.width * 0.02);
+      this.ctx.fillStyle = d.color;
+      this.ctx.beginPath();
+      this.ctx.moveTo(p2.x, p2.y);
+      this.ctx.lineTo(p2.x - al * Math.cos(angle - 0.4), p2.y - al * Math.sin(angle - 0.4));
+      this.ctx.lineTo(p2.x - al * Math.cos(angle + 0.4), p2.y - al * Math.sin(angle + 0.4));
+      this.ctx.closePath(); this.ctx.fill();
     }
-    ctx.restore();
+    this.ctx.restore();
   }
 
-  _drawLinePreview(d) {
-    const ctx = this.ctx; const s = this._scale || 1;
-    ctx.save(); ctx.scale(s, s);
-    ctx.strokeStyle = d.color; ctx.lineWidth = 2; ctx.lineCap = 'round';
-    ctx.setLineDash([6, 3]);
-    ctx.beginPath(); ctx.moveTo(d.x1, d.y1); ctx.lineTo(d.x2, d.y2); ctx.stroke();
-    ctx.setLineDash([]); ctx.restore();
-  }
+  // HTML overlay — renders operator icons as real <img> elements
+  // This completely avoids CORS issues since HTML images don't have canvas restrictions
+  _renderOverlay() {
+    if (!this.overlay) return;
+    this.overlay.innerHTML = '';
+    this.items.forEach(item => {
+      const el = document.createElement('div');
+      const isSelected = item.id === this.selectedId;
+      el.style.cssText = `
+        position:absolute;
+        left:${item.px}%;
+        top:${item.py}%;
+        transform:translate(-50%,-50%);
+        pointer-events:auto;
+        cursor:${this.tool === 'select' ? 'grab' : this.tool === 'eraser' ? 'cell' : 'default'};
+        user-select:none;
+        display:flex;flex-direction:column;align-items:center;gap:2px;
+      `;
 
-  _drawItem(item) {
-    const ctx = this.ctx;
-    const r = item.r || 20;
-    const cx = item.x + r, cy = item.y + r;
-    const isSelected = item.id === this.selectedId;
+      if (item.type === 'operator') {
+        const iconKey = OP_ICON[item.label];
+        const iconUrl = iconKey ? (ICON_BASE + iconKey + '.svg') : null;
+        const borderColor = isSelected ? '#fff' : (item.side === 'attack' ? '#4a9eff' : '#e8b84b');
+        const bgColor = item.side === 'attack' ? '#1a3a5a' : '#2a1a0a';
+        const size = 36;
 
-    if (item.type === 'operator') {
-      // Try to draw icon image
-      const iconKey = OP_ICON[item.label];
-      const iconUrl = iconKey ? (ICON_BASE + iconKey + '.svg') : null;
+        if (iconUrl) {
+          el.innerHTML = `
+            <div style="width:${size}px;height:${size}px;border-radius:50%;background:${bgColor};border:2px solid ${borderColor};overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,0.6)">
+              <img src="${iconUrl}" width="${size}" height="${size}" style="display:block;border-radius:50%" onerror="this.parentElement.innerHTML='<div style=width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${item.side==='attack'?'#fff':'#e8b84b'}'>${item.label.slice(0,3).toUpperCase()}</div>'">
+            </div>
+            <div style="font-size:10px;color:#fff;text-shadow:0 1px 3px #000;white-space:nowrap;font-family:'Barlow',sans-serif;font-weight:500">${item.label.length > 9 ? item.label.slice(0,9)+'…' : item.label}</div>
+          `;
+        } else {
+          const initials = item.label.split(/[\s\-]/).map(w=>w[0]).join('').slice(0,3).toUpperCase();
+          el.innerHTML = `
+            <div style="width:${size}px;height:${size}px;border-radius:50%;background:${bgColor};border:2px solid ${borderColor};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${item.side==='attack'?'#fff':'#e8b84b'};box-shadow:0 2px 6px rgba(0,0,0,0.6)">${initials}</div>
+            <div style="font-size:10px;color:#fff;text-shadow:0 1px 3px #000;white-space:nowrap;font-family:'Barlow',sans-serif">${item.label.length > 9 ? item.label.slice(0,9)+'…' : item.label}</div>
+          `;
+        }
 
-      if (iconUrl && this.opIconCache[iconUrl] && this.opIconCache[iconUrl] !== 'loading' && this.opIconCache[iconUrl] !== 'error') {
-        // Draw background circle
-        ctx.save();
-        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
-        ctx.fillStyle = item.side === 'attack' ? '#1a3a5a' : '#3a2a0a';
-        ctx.fill();
-        if (isSelected) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke(); }
-        else { ctx.strokeStyle = item.side === 'attack' ? '#4a9eff' : '#e8b84b'; ctx.lineWidth = 1.5; ctx.stroke(); }
-        // Draw icon clipped to circle
-        ctx.beginPath(); ctx.arc(cx, cy, r - 2, 0, Math.PI*2); ctx.clip();
-        ctx.drawImage(this.opIconCache[iconUrl], item.x+2, item.y+2, r*2-4, r*2-4);
-        ctx.restore();
-      } else {
-        // Fallback: colored circle with initials
-        const initials = item.label.split(/[\s\-]/).map(w=>w[0]).join('').slice(0,3).toUpperCase();
-        ctx.save();
-        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
-        ctx.fillStyle = item.side === 'attack' ? '#4a9eff' : '#e8b84b';
-        ctx.fill();
-        if (isSelected) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke(); }
-        ctx.fillStyle = item.side === 'attack' ? '#fff' : '#000';
-        ctx.font = `bold ${Math.max(8, r*0.65)}px Barlow Condensed,sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(initials, cx, cy); ctx.restore();
-        // Load icon in background
-        if (iconUrl && !this.opIconCache[iconUrl]) this._loadOpIcon(iconUrl, item.id);
+      } else if (item.type === 'gadget') {
+        const borderColor = isSelected ? '#fff' : item.color;
+        el.innerHTML = `
+          <div style="min-width:32px;padding:2px 6px;border-radius:4px;background:${item.color}cc;border:2px solid ${borderColor};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.6);text-shadow:0 1px 2px #000;white-space:nowrap">${item.symbol || item.label.slice(0,6)}</div>
+          <div style="font-size:9px;color:#fff;text-shadow:0 1px 3px #000;white-space:nowrap;font-family:'Barlow',sans-serif">${item.label.length > 10 ? item.label.slice(0,10)+'…' : item.label}</div>
+        `;
       }
-      // Label below
-      ctx.save();
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
-      ctx.font = `${Math.max(8,r*0.5)}px Barlow,sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.shadowColor = '#000'; ctx.shadowBlur = 3;
-      const shortName = item.label.length > 9 ? item.label.slice(0,9)+'…' : item.label;
-      ctx.fillText(shortName, cx, cy + r + 2); ctx.restore();
 
-    } else if (item.type === 'gadget') {
-      const s2 = r * 1.8;
-      ctx.save();
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(item.x, item.y, s2, s2, 5);
-      else { ctx.rect(item.x, item.y, s2, s2); }
-      ctx.fillStyle = item.color + 'cc';
-      ctx.fill();
-      if (isSelected) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
-      else { ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1; ctx.stroke(); }
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${Math.max(7,r*0.6)}px Barlow Condensed,sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.shadowColor = '#000'; ctx.shadowBlur = 2;
-      ctx.fillText(item.symbol || item.label.slice(0,4), item.x+s2/2, item.y+s2/2);
-      ctx.restore();
+      // Drag events on icon elements
+      el.addEventListener('mousedown', e => {
+        if (this.tool !== 'select') return;
+        e.stopPropagation();
+        this.selectedId = item.id;
+        this.isDragging = true;
+        const pt = this._evtToPct(e);
+        this.dragOffPx = pt.px - item.px;
+        this.dragOffPy = pt.py - item.py;
+        this.canvas.style.cursor = 'grabbing';
+        this._renderOverlay();
+      });
+
+      this.overlay.appendChild(el);
+    });
+  }
+
+  // IMAGE LOADING
+  _loadImage(cb) {
+    const floors = MAP_IMAGES[this.map] || [];
+    const floor = floors[this.floorIndex];
+    if (!floor) { this._render(); if (cb) cb(); return; }
+    const src = './' + floor.file;
+    if (imgCache[src]) {
+      this.img = imgCache[src];
+      this._fitCanvas(); this._render();
+      if (cb) cb(); return;
     }
-  }
-
-  _loadOpIcon(url) {
-    this.opIconCache[url] = 'loading';
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      // Test if we can draw it (CORS might still block canvas draw)
-      try {
-        const tc = document.createElement('canvas');
-        tc.width = 40; tc.height = 40;
-        tc.getContext('2d').drawImage(img, 0, 0, 40, 40);
-        this.opIconCache[url] = img;
-      } catch(e) {
-        this.opIconCache[url] = 'error';
-      }
-      this._render();
+    const image = new Image();
+    image.onload = () => {
+      imgCache[src] = image; this.img = image;
+      this._fitCanvas(); this._render();
+      if (cb) cb();
     };
-    img.onerror = () => { this.opIconCache[url] = 'error'; };
-    // Add cache-bust to help with CORS
-    img.src = url + '?v=1';
+    image.onerror = () => {
+      this.img = null; this._fitCanvas(); this._render();
+      if (cb) cb();
+    };
+    image.src = src;
   }
 
+  _fitCanvas() {
+    const container = document.getElementById(this.containerId);
+    const maxW = container ? Math.max(container.clientWidth - 8, 300) : 800;
+    const imgW = this.img ? this.img.naturalWidth : 800;
+    const imgH = this.img ? this.img.naturalHeight : 600;
+    const scale = Math.min(1, maxW / imgW);
+    this.canvas.width = Math.round(imgW * scale);
+    this.canvas.height = Math.round(imgH * scale);
+    this.displayW = this.canvas.width;
+    this.displayH = this.canvas.height;
+  }
+
+  // SAVE / LOAD
   _scheduleSave() {
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this._saveState(), 1500);
@@ -501,13 +495,12 @@ export class MapCanvas {
     try {
       await setDoc(doc(db, 'map_plans', this.saveKey), {
         items: this.items, drawings: this.drawings,
-        map: this.map, floorIndex: this.floorIndex,
-        savedAt: serverTimestamp()
+        map: this.map, floorIndex: this.floorIndex, savedAt: serverTimestamp()
       });
       const ind = document.getElementById('planner-save-indicator');
       if (ind) { ind.style.opacity = '1'; setTimeout(() => ind.style.opacity = '0', 1500); }
       if (this.options.onSave) this.options.onSave(this.getData());
-    } catch(e) { console.error('Canvas save error', e); }
+    } catch(e) { console.error('Save error', e); }
   }
 
   async _loadState() {
@@ -515,8 +508,19 @@ export class MapCanvas {
     try {
       const snap = await getDoc(doc(db, 'map_plans', this.saveKey));
       if (snap.exists()) {
-        this.items = snap.data().items || [];
-        this.drawings = snap.data().drawings || [];
+        const data = snap.data();
+        // Migrate old canvas-pixel coords to percentage coords if needed
+        this.items = (data.items || []).map(item => {
+          if (item.px === undefined && item.x !== undefined) {
+            // Old format: x/y in canvas pixels - convert to rough percentage
+            return { ...item, px: 50, py: 50 };
+          }
+          return item;
+        });
+        this.drawings = (data.drawings || []).map(d => {
+          if (d.x1 > 100) return { ...d, x1: (d.x1/800)*100, y1: (d.y1/600)*100, x2: (d.x2/800)*100, y2: (d.y2/600)*100 };
+          return d;
+        });
         this._render();
       }
     } catch(e) {}
@@ -552,33 +556,25 @@ function buildBrainstormMapList() {
 
 function loadBrainstormMap(map) {
   brainstormMap = map;
-  const canvasArea = document.getElementById('brainstorm-canvas-area');
-  const emptyState = document.getElementById('brainstorm-empty');
-  if (canvasArea) canvasArea.style.display = 'block';
-  if (emptyState) emptyState.style.display = 'none';
+  document.getElementById('brainstorm-canvas-area').style.display = 'block';
+  document.getElementById('brainstorm-empty').style.display = 'none';
   document.getElementById('brainstorm-map-title').textContent = map;
-
-  // Floor selector
   buildBrainstormFloorSelect(map);
   buildBrainstormToolbar();
+  const saveKey = `brainstorm__${map}__0`.replace(/\s/g, '_');
+  if (brainstormCanvas) { brainstormCanvas.map = map; brainstormCanvas.floorIndex = 0; brainstormCanvas.saveKey = saveKey; brainstormCanvas.items = []; brainstormCanvas.drawings = []; brainstormCanvas._loadImage(() => brainstormCanvas._loadState()); }
+  else { brainstormCanvas = new MapCanvas('brainstorm-svg-container', saveKey, { map, floorIndex: 0, side: 'defense' }); brainstormCanvas.init(); brainstormCanvas._loadState(); }
   buildBrainstormPalettes('defense');
-
-  const floorIndex = 0;
-  const saveKey = `brainstorm__${map}__0`.replace(/\s/g,'_');
-  brainstormCanvas = new MapCanvas('brainstorm-svg-container', saveKey, { map, floorIndex, side: 'defense' });
-  brainstormCanvas.init();
-  brainstormCanvas._loadState();
 }
 
 function buildBrainstormFloorSelect(map) {
   const sel = document.getElementById('brainstorm-floor-select');
   if (!sel) return;
-  const floors = MAP_IMAGES[map] || [];
-  sel.innerHTML = floors.map((f,i) => `<option value="${i}">${f.label}</option>`).join('');
+  sel.innerHTML = (MAP_IMAGES[map] || []).map((f, i) => `<option value="${i}">${f.label}</option>`).join('');
   sel.onchange = () => {
     const idx = parseInt(sel.value);
-    const saveKey = `brainstorm__${brainstormMap}__${idx}`.replace(/\s/g,'_');
-    brainstormCanvas.saveKey = saveKey;
+    if (!brainstormCanvas) return;
+    brainstormCanvas.saveKey = `brainstorm__${brainstormMap}__${idx}`.replace(/\s/g, '_');
     brainstormCanvas.setFloor(idx);
     brainstormCanvas._loadState();
   };
@@ -588,81 +584,81 @@ function buildBrainstormToolbar() {
   const tb = document.getElementById('brainstorm-toolbar');
   if (!tb || tb.dataset.built) return;
   tb.dataset.built = '1';
-  tb.innerHTML = buildToolbarHTML('brainstorm');
-}
-
-function buildToolbarHTML(prefix) {
-  return `
+  tb.innerHTML = `
     <div class="planner-tool-group">
-      <button class="planner-tool-btn active" id="${prefix}-side-def" onclick="setBrainstormSide('defense')">Defense</button>
-      <button class="planner-tool-btn" id="${prefix}-side-atk" onclick="setBrainstormSide('attack')">Attack</button>
+      <button class="planner-tool-btn active" id="bs-side-def" onclick="setBrainstormSide('defense')">Defense</button>
+      <button class="planner-tool-btn" id="bs-side-atk" onclick="setBrainstormSide('attack')">Attack</button>
     </div>
     <div class="planner-tool-group">
-      <button class="planner-tool-btn active" id="${prefix}-tool-select" onclick="setBrainstormTool('select')">⊹ Select</button>
-      <button class="planner-tool-btn" id="${prefix}-tool-operator" onclick="setBrainstormTool('operator')">◉ Operator</button>
-      <button class="planner-tool-btn" id="${prefix}-tool-gadget" onclick="setBrainstormTool('gadget')">⬟ Gadget</button>
-      <button class="planner-tool-btn" id="${prefix}-tool-arrow" onclick="setBrainstormTool('arrow')">→ Arrow</button>
-      <button class="planner-tool-btn" id="${prefix}-tool-line" onclick="setBrainstormTool('line')">╱ Line</button>
-      <button class="planner-tool-btn" id="${prefix}-tool-eraser" onclick="setBrainstormTool('eraser')">⌫ Erase</button>
+      <button class="planner-tool-btn active" id="bs-tool-select" onclick="setBrainstormTool('select')">⊹ Select</button>
+      <button class="planner-tool-btn" id="bs-tool-operator" onclick="setBrainstormTool('operator')">◉ Operator</button>
+      <button class="planner-tool-btn" id="bs-tool-gadget" onclick="setBrainstormTool('gadget')">⬟ Gadget</button>
+      <button class="planner-tool-btn" id="bs-tool-arrow" onclick="setBrainstormTool('arrow')">→ Arrow</button>
+      <button class="planner-tool-btn" id="bs-tool-line" onclick="setBrainstormTool('line')">╱ Line</button>
+      <button class="planner-tool-btn" id="bs-tool-eraser" onclick="setBrainstormTool('eraser')">⌫ Erase</button>
     </div>
+    <button class="planner-tool-btn" id="brainstorm-svg-container-zoomin" title="Zoom in">＋</button>
+    <button class="planner-tool-btn" id="brainstorm-svg-container-zoomout" title="Zoom out">－</button>
+    <button class="planner-tool-btn" id="brainstorm-svg-container-zoomreset" title="Reset zoom">⊡</button>
     <button class="planner-tool-btn danger" onclick="clearBrainstorm()">🗑 Clear</button>
-    <button class="planner-tool-btn accent" onclick="saveBrainstorm()">💾 Save</button>
+    <button class="planner-tool-btn accent" onclick="if(brainstormCanvas)brainstormCanvas._saveState()">💾 Save</button>
   `;
 }
 
 function buildBrainstormPalettes(side) {
-  buildPalette('brainstorm-op-palette', side, 'brainstorm-selectOp', brainstormCanvas);
-  buildGadgetPalette2('brainstorm-gadget-palette', side, 'brainstorm-selectGadget', brainstormCanvas);
-}
-
-function buildPalette(containerId, side, fnName, canvasInst) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
   const ops = side === 'attack' ? ATTACK_OPERATORS : DEFENSE_OPERATORS;
-  el.innerHTML = `<div class="section-title" style="margin-bottom:5px">${side === 'attack' ? 'Attackers' : 'Defenders'}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:3px">
-      ${ops.map(op => `<button class="planner-op-btn" onclick="${fnName}('${op.replace(/'/g,"\\'")}');buildBrainstormPalettes('${side}')" title="${op}">${op.length>8?op.slice(0,8)+'…':op}</button>`).join('')}
-    </div>`;
-}
-
-function buildGadgetPalette2(containerId, side, fnName, canvasInst) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
+  const opPal = document.getElementById('brainstorm-op-palette');
+  if (opPal) {
+    opPal.innerHTML = `<div class="section-title" style="margin-bottom:5px">${side === 'attack' ? 'Attackers' : 'Defenders'}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px">
+        ${ops.map(op => {
+          const iconKey = OP_ICON[op];
+          const iconUrl = iconKey ? (ICON_BASE + iconKey + '.svg') : null;
+          return `<button class="planner-op-btn" onclick="bsSelectOp('${op.replace(/'/g,"\\'")}');buildBSPalettes('${side}')" title="${op}" style="display:flex;align-items:center;gap:3px;padding:3px 6px">
+            ${iconUrl ? `<img src="${iconUrl}" width="16" height="16" style="border-radius:50%;vertical-align:middle" onerror="this.style.display='none'">` : ''}
+            ${op.length > 7 ? op.slice(0,7)+'…' : op}
+          </button>`;
+        }).join('')}
+      </div>`;
+  }
   const gadgets = side === 'attack' ? GADGETS.attack : GADGETS.defense;
-  el.innerHTML = `<div class="section-title" style="margin-bottom:5px">Gadgets</div>
-    <div style="display:flex;flex-wrap:wrap;gap:3px">
-      ${gadgets.map(g => `<button class="planner-op-btn" style="border-color:${g.color}55" onclick="${fnName}('${g.id}')" title="${g.label}">${g.symbol}</button>`).join('')}
-    </div>`;
+  const gadPal = document.getElementById('brainstorm-gadget-palette');
+  if (gadPal) {
+    gadPal.innerHTML = `<div class="section-title" style="margin-bottom:5px">Gadgets</div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px">
+        ${gadgets.map(g => `<button class="planner-op-btn" style="border-color:${g.color}66;color:${g.color}" onclick="bsSelectGadget('${g.id}')" title="${g.label}">${g.symbol}</button>`).join('')}
+      </div>`;
+  }
 }
+window.buildBSPalettes = buildBrainstormPalettes;
 
-// Brainstorm globals
 window.setBrainstormSide = function(side) {
   if (!brainstormCanvas) return;
   brainstormCanvas.setSide(side);
-  document.getElementById('brainstorm-side-def')?.classList.toggle('active', side==='defense');
-  document.getElementById('brainstorm-side-atk')?.classList.toggle('active', side==='attack');
+  document.getElementById('bs-side-def')?.classList.toggle('active', side === 'defense');
+  document.getElementById('bs-side-atk')?.classList.toggle('active', side === 'attack');
   buildBrainstormPalettes(side);
 };
 window.setBrainstormTool = function(tool) {
   if (!brainstormCanvas) return;
   brainstormCanvas.setTool(tool);
-  ['select','operator','gadget','arrow','line','eraser'].forEach(t => {
-    document.getElementById(`brainstorm-tool-${t}`)?.classList.toggle('active', t===tool);
-  });
+  ['select','operator','gadget','arrow','line','eraser'].forEach(t =>
+    document.getElementById(`bs-tool-${t}`)?.classList.toggle('active', t === tool));
 };
-window.brainstorm_selectOp = function(op) {
-  if (brainstormCanvas) { brainstormCanvas.setOperator(op); brainstormCanvas.setTool('operator'); }
+window.bsSelectOp = function(op) {
+  if (!brainstormCanvas) return;
+  brainstormCanvas.setOperator(op);
+  setBrainstormTool('operator');
 };
-window.brainstorm_selectGadget = function(id) {
+window.bsSelectGadget = function(id) {
   const all = [...GADGETS.attack, ...GADGETS.defense];
   const g = all.find(x => x.id === id);
-  if (brainstormCanvas && g) { brainstormCanvas.setGadget(g); brainstormCanvas.setTool('gadget'); }
+  if (!brainstormCanvas || !g) return;
+  brainstormCanvas.setGadget(g);
+  setBrainstormTool('gadget');
 };
 window.clearBrainstorm = function() {
-  if (!brainstormCanvas || !confirm('Clear this floor?')) return;
-  brainstormCanvas.clear();
+  if (brainstormCanvas && confirm('Clear this floor?')) brainstormCanvas.clear();
 };
-window.saveBrainstorm = function() { brainstormCanvas?._saveState(); };
 
-// Export for strat canvases
 export { MAP_IMAGES };

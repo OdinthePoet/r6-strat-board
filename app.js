@@ -349,7 +349,7 @@ function renderStratDetail(id) {
 }
 
 window.initStratCanvas = function(stratId, map) {
-  if (stratCanvases[stratId]) return; // already initialized
+  if (stratCanvases[stratId]) { stratCanvases[stratId]._render(); return; } // already initialized, just re-render
   const s = allStrats.find(x => x.id === stratId);
   if (!s) return;
 
@@ -382,6 +382,9 @@ window.initStratCanvas = function(stratId, map) {
         <button class="planner-tool-btn" id="sct-${stratId}-line" onclick="setStratCanvasTool('${stratId}','line')">╱ Line</button>
         <button class="planner-tool-btn" id="sct-${stratId}-eraser" onclick="setStratCanvasTool('${stratId}','eraser')">⌫ Erase</button>
       </div>
+      <button class="planner-tool-btn" id="stratcanvas-container-${stratId}-zoomin" title="Zoom in">＋</button>
+      <button class="planner-tool-btn" id="stratcanvas-container-${stratId}-zoomout" title="Zoom out">－</button>
+      <button class="planner-tool-btn" id="stratcanvas-container-${stratId}-zoomreset" title="Reset zoom">⊡</button>
       <button class="planner-tool-btn danger" onclick="clearStratCanvas('${stratId}')">🗑</button>
     `;
   }
@@ -397,24 +400,22 @@ window.initStratCanvas = function(stratId, map) {
 };
 
 function buildStratCanvasPalettes(stratId, side) {
-  const s = allStrats.find(x => x.id === stratId);
   const ops = side === 'attack' ? ATTACK_OPERATORS : DEFENSE_OPERATORS;
-
   const opPal = document.getElementById(`stratcanvas-op-palette-${stratId}`);
   if (opPal) {
-    opPal.innerHTML = `<div class="section-title" style="margin-bottom:4px">${side==='attack'?'Attackers':'Defenders'}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:3px">
-        ${ops.map(op => `<button class="planner-op-btn" onclick="stratCanvasSelectOp('${stratId}','${op.replace(/'/g,"\\'")}');buildStratCanvasPalettes_global('${stratId}','${side}')" title="${op}">${op.length>8?op.slice(0,8)+'…':op}</button>`).join('')}
-      </div>`;
+    const btns = ops.map(op => {
+      const iconKey = OP_ICON[op];
+      const iconUrl = iconKey ? (ICON_BASE + iconKey + '.svg') : null;
+      const safeName = op.replace(/'/g, "\\'");
+      return `<button class="planner-op-btn" onclick="stratCanvasSelectOp('${stratId}','${safeName}');buildStratCanvasPalettes_global('${stratId}','${side}')" title="${op}" style="display:flex;align-items:center;gap:2px;padding:2px 5px">${iconUrl ? `<img src="${iconUrl}" width="14" height="14" style="border-radius:50%;vertical-align:middle;flex-shrink:0" onerror="this.style.display='none'">` : ''}<span>${op.length>7?op.slice(0,7)+'\u2026':op}</span></button>`;
+    }).join('');
+    opPal.innerHTML = `<div class="section-title" style="margin-bottom:4px">${side==='attack'?'Attackers':'Defenders'}</div><div style="display:flex;flex-wrap:wrap;gap:3px">${btns}</div>`;
   }
-
   const gadgets = side === 'attack' ? GADGETS.attack : GADGETS.defense;
   const gadPal = document.getElementById(`stratcanvas-gadget-palette-${stratId}`);
   if (gadPal) {
-    gadPal.innerHTML = `<div class="section-title" style="margin-bottom:4px">Gadgets</div>
-      <div style="display:flex;flex-wrap:wrap;gap:3px">
-        ${gadgets.map(g => `<button class="planner-op-btn" style="border-color:${g.color}55" onclick="stratCanvasSelectGadget('${stratId}','${g.id}')" title="${g.label}">${g.symbol}</button>`).join('')}
-      </div>`;
+    const btns = gadgets.map(g => `<button class="planner-op-btn" style="border-color:${g.color}66;color:${g.color}" onclick="stratCanvasSelectGadget('${stratId}','${g.id}')" title="${g.label}">${g.symbol}</button>`).join('');
+    gadPal.innerHTML = `<div class="section-title" style="margin-bottom:4px">Gadgets</div><div style="display:flex;flex-wrap:wrap;gap:3px">${btns}</div>`;
   }
 }
 window.buildStratCanvasPalettes_global = buildStratCanvasPalettes;
