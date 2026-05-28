@@ -22,7 +22,7 @@ const MAP_IMAGES = {
     { label: "Floor 3", file: "r6-maps-border-blueprint-3.jpg" }
   ],
   "Chalet": [
-    { label: "1st Floor", file: "chalet_rework_1f.webp" },
+    { label: "1st Floor", file: "./map_images/chalet_rework_1f.webp" },
     { label: "2nd Floor", file: "chalet_rework_2f.webp" },
     { label: "Basement",  file: "chalet_rework_basement.webp" },
     { label: "Roof",      file: "chalet_rework_roof.webp" }
