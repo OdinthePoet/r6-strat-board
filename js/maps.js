@@ -788,5 +788,89 @@ export const MAP_SCHEMATICS = {
         ]
       }
     }
-  }
+  },
+  "Calypso Casino": {
+    floors: ["Basement", "1st Floor", "2nd Floor"],
+    defaultFloor: "1st Floor",
+    width: 800, height: 600,
+    floors_data: {
+      "2nd Floor": {
+        rooms: [
+          { id: "cigar",    x: 60,  y: 80,  w: 220, h: 160, label: "Cigar Room",  color: "#2a2a1a", site: true },
+          { id: "pool_2f",  x: 280, y: 80,  w: 200, h: 160, label: "Pool",         color: "#1a2a3a", site: true },
+          { id: "hallway",  x: 480, y: 80,  w: 140, h: 100, label: "Hallway",      color: "#1a1a2a" },
+          { id: "lounge_2f",x: 620, y: 80,  w: 120, h: 160, label: "Lounge",       color: "#1a1a2a" },
+          { id: "stair_2f", x: 440, y: 180, w: 50,  h: 70,  label: "Stairs",       color: "#333" },
+        ],
+        walls: [
+          { x1: 280, y1: 80,  x2: 280, y2: 240 },
+          { x1: 480, y1: 80,  x2: 480, y2: 240 },
+          { x1: 620, y1: 80,  x2: 620, y2: 240 },
+        ],
+        doors: [
+          { x: 160, y: 160, w: 30, h: 4, label: "D" },
+          { x: 370, y: 160, w: 30, h: 4, label: "D" },
+        ],
+        hatches: [{ x: 540, y: 120, label: "H" }],
+        windows: [
+          { x: 58,  y: 120, w: 4, h: 30, label: "W" },
+          { x: 735, y: 120, w: 4, h: 30, label: "W" },
+        ]
+      },
+      "1st Floor": {
+        rooms: [
+          { id: "blackjack", x: 60,  y: 80,  w: 200, h: 160, label: "Blackjack",    color: "#2a1a1a", site: true },
+          { id: "poker",     x: 260, y: 80,  w: 180, h: 160, label: "Poker",         color: "#2a1a1a", site: true },
+          { id: "bar_1f",    x: 60,  y: 280, w: 200, h: 140, label: "Bar",           color: "#1a2a1a", site: true },
+          { id: "betting",   x: 260, y: 280, w: 180, h: 140, label: "Betting Floor", color: "#1a2a1a", site: true },
+          { id: "reception", x: 440, y: 80,  w: 180, h: 100, label: "Reception",     color: "#1a1a2a" },
+          { id: "corridor",  x: 440, y: 180, w: 180, h: 80,  label: "Corridor",      color: "#1a1a2a" },
+          { id: "vault_hall",x: 620, y: 80,  w: 120, h: 160, label: "Vault Hall",    color: "#2a1a2a" },
+          { id: "ext_1f",    x: 440, y: 280, w: 300, h: 140, label: "Exterior",      color: "#111" },
+          { id: "ext_pool",  x: 60,  y: 460, w: 680, h: 80,  label: "Pool Exterior", color: "#111" },
+          { id: "stair_1f",  x: 400, y: 200, w: 50,  h: 80,  label: "Stairs",        color: "#333" },
+        ],
+        walls: [
+          { x1: 260, y1: 80,  x2: 260, y2: 240 },
+          { x1: 440, y1: 80,  x2: 440, y2: 420 },
+          { x1: 620, y1: 80,  x2: 620, y2: 240 },
+          { x1: 60,  y1: 258, x2: 440, y2: 258 },
+          { x1: 260, y1: 258, x2: 260, y2: 420 },
+        ],
+        doors: [
+          { x: 150, y: 256, w: 30, h: 4, label: "D" },
+          { x: 310, y: 256, w: 30, h: 4, label: "D" },
+        ],
+        hatches: [
+          { x: 150, y: 140, label: "H" },
+          { x: 350, y: 310, label: "H" },
+        ],
+        windows: [
+          { x: 58,  y: 120, w: 4, h: 30, label: "W" },
+          { x: 735, y: 100, w: 4, h: 30, label: "W" },
+        ]
+      },
+      "Basement": {
+        rooms: [
+          { id: "cctv",       x: 60,  y: 100, w: 220, h: 160, label: "CCTV Room",        color: "#2a1a2a", site: true },
+          { id: "vault_check",x: 280, y: 100, w: 200, h: 160, label: "Vault Checkpoint", color: "#2a1a2a", site: true },
+          { id: "security_b", x: 480, y: 100, w: 160, h: 100, label: "Security",          color: "#1a1a2a" },
+          { id: "storage_b",  x: 480, y: 200, w: 160, h: 80,  label: "Storage",           color: "#1a2a1a" },
+          { id: "garage_b",   x: 640, y: 100, w: 100, h: 180, label: "Garage",            color: "#111"    },
+          { id: "stair_b",    x: 250, y: 260, w: 50,  h: 70,  label: "Stairs",            color: "#333"    },
+        ],
+        walls: [
+          { x1: 280, y1: 100, x2: 280, y2: 280 },
+          { x1: 480, y1: 100, x2: 480, y2: 280 },
+          { x1: 640, y1: 100, x2: 640, y2: 280 },
+        ],
+        doors: [
+          { x: 160, y: 178, w: 30, h: 4, label: "D" },
+          { x: 370, y: 178, w: 30, h: 4, label: "D" },
+        ],
+        hatches: [{ x: 160, y: 160, label: "H" }],
+        windows: []
+      }
+    }
+  },
 };
