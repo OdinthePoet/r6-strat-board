@@ -63,6 +63,11 @@ export const MAPS = {
     floors: ["Ground Floor","1st Floor"],
     category: "ranked"
   },
+    "Calypso Casino": {
+    sites: ["2F Cigar Room / Pool", "1F Blackjack / Poker", "1F Bar / Betting", "B CCTV / Vault Checkpoint"],
+    floors: ["Basement", "1st Floor", "2nd Floor"],
+    category: "ranked"
+  },
   "Chalet": {
     sites: ["Garage / Snowmobile","Wine / Trophy","Bedroom / Office","Kitchen / Bar"],
     floors: ["Basement","Ground Floor","1st Floor","2nd Floor"],
