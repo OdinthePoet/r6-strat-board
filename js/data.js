@@ -39,7 +39,7 @@ export const MAPS = {
     category: "ranked"
   },
   "Chalet": {
-    sites: ["Garage / Snowmobile","Wine / Trophy","Bedroom / Office","Kitchen / Bar"],
+    sites: ["Garage / Wine","Kitchen / Dining","Master / Office","Bar / Gaming"],
     floors: ["Basement","Ground Floor","1st Floor","2nd Floor"],
     category: "pro"
   },
